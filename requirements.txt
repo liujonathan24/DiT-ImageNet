@@ -1,0 +1,8 @@
+jax==0.7.1
+jaxlib==0.7.1
+ml_dtypes==0.5.3
+numpy==2.3.3
+opt_einsum==3.4.0
+scipy==1.16.2
+setuptools==80.9.0
+wheel==0.45.1
