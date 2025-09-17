@@ -1,6 +1,12 @@
 import jax 
 import jax.numpy as jnp
+import flax
 from jax import grad
+
+# DiT-S: 
+# Layers = N = 12 
+# Hidden Size = d = 384 
+# heads = 6
 
 
 ####################################################################################
@@ -9,6 +15,77 @@ from jax import grad
 
 from flax import nnx
 import optax
+
+
+def MHA(hidden, num_heads, rngs):
+    """
+    Initializes a MHA layer
+    """
+    d_head = hidden//num_heads
+    Ks = nnx.Linear() # Need to make "num_heads" of them, each with in & out being in: length, out: hidden
+
+    def forward(x)
+
+def attention(hidden, length):
+    """
+    Initializes an attention head
+    """
+    K = nnx.Linear(in_features=length, out_features=hidden, rngs=rngs)
+    Q = nnx.Linear(in_features=length, out_features=hidden, rngs=rngs)
+    V = nnx.Linear(in_features=length, out_features=hidden, rngs=rngs)
+
+    def forward(x):
+        key = K(x)
+        query = Q(x)
+        value = V(x)
+        
+        weight = nnx.softmax(nnx.swapaxes(key) @ query)
+        output = value @ weight
+        return output 
+
+    return forward
+
+def DiTBlock(nnx.Module):
+    def __init__(self,
+            hidden_size: int
+            num_heads: int,
+            time_emb_dim: int,
+            rngs: nnx.rng):
+        """
+        Initialize a DiT block.
+        """
+        self.LayerNorm1 = nnx.LayerNorm(hidden_size, rngs=rngs)
+        self.LayerNorm2 = nnx.LayerNorm(num_heads, rngs=rngs)
+        self.MHA = MHA(hidden, features)
+        self.linWeights = nnx.Param(jnp.ones(6, in_channels))
+        
+        self.FFN = FFN()
+
+        # Conditional MLP
+        self.MLP = MLP()
+
+    def forward(self, x, conditioning):
+        conditioning = self.MLP(conditioning)
+        
+        gamma1, beta1, alpha1, gamma2, beta2, alpha2 = self.linWeights.value
+        tmp = self.LayerNorm1(x)
+        tmp = gamma1*tmp + beta1*conditioning
+        tmp = self.MHA(tmp)
+        tmp = alpha1*tmp + conditioning
+
+        tmp += x
+        x = tmp
+
+        tmp = self.LayerNorm2(tmp)
+        tmp = gamma2*tmp + beta2*conditioning
+        tmp = self.FFN(tmp)
+        tmp = alpha2*tmp + conditioning
+
+        x += tmp
+
+        return x
+
+
 
 
 class Model(nnx.Module):
