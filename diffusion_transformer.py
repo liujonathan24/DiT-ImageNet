@@ -2,72 +2,70 @@ import jax
 import jax.numpy as jnp
 import flax
 from jax import grad
-
-# DiT-S: 
-# Layers = N = 12 
-# Hidden Size = d = 384 
-# heads = 6
-
-
-####################################################################################
-# Example:
-####################################################################################
-
 from flax import nnx
-import optax
+        
 
-
-def MHA(hidden, num_heads, rngs):
-    """
-    Initializes a MHA layer
-    """
-    d_head = hidden//num_heads
-    Ks = nnx.Linear() # Need to make "num_heads" of them, each with in & out being in: length, out: hidden
-
-    def forward(x)
-
-def attention(hidden, length):
-    """
-    Initializes an attention head
-    """
-    K = nnx.Linear(in_features=length, out_features=hidden, rngs=rngs)
-    Q = nnx.Linear(in_features=length, out_features=hidden, rngs=rngs)
-    V = nnx.Linear(in_features=length, out_features=hidden, rngs=rngs)
+def MHA(length, hidden, num_heads, rngs):
+    d_head = hidden // num_heads
+    qkv_proj = nnx.Linear(hidden, 3 * hidden, rngs=rngs)
+    out_proj = nnx.Linear(hidden, hidden, rngs=rngs)
 
     def forward(x):
-        key = K(x)
-        query = Q(x)
-        value = V(x)
-        
-        weight = nnx.softmax(nnx.swapaxes(key) @ query)
-        output = value @ weight
-        return output 
+        # x: [L, Hidden]
+        L = x.shape[0]
+        y = qkv_proj(x)                    # [L, 3H]
+        y = y.reshape(L, 3, num_heads, d_head)   # [L, 3, head, d]
+        y = jnp.transpose(y, (1, 2, 0, 3))       # [3, h, L, d]
+        q, k, v = y[0], y[1], y[2]               # each [h, L, d]
+
+        values, attention = scaled_dot_product(q, k, v)  # values: [h, L, d]
+        values = jnp.transpose(values, (1, 0, 2)).reshape(L, hidden)  # [L, H]
+        values = out_proj(values)              # [L, H]
+        return values, attention               # attention: [h, L, L]
 
     return forward
 
+# Architecture from Vision Transformer
+def MLP(nnx.Module):
+    def __init__(self,
+            in_features: int,
+            hidden_features: int):
+        """
+        Inititializes a MLP block. Has reduced 
+        options compared to ViT implementations, but 
+        sufficient for the task. Uses GeLU activations.
+        """
+        self.fc1 = nnx.Linear(in_features, hidden_features)
+        self.act = nnx.gelu(x, approximate=True)
+        self.fc2 = nnx.Linear(hidden_features, in_features)
+        
+    def forward(self, x):
+        x = self.fc1(x)
+        x = self.act(x)
+        x = self.fc2(x)
+        return x
+
+
 def DiTBlock(nnx.Module):
     def __init__(self,
-            hidden_size: int
+            length: int,
+            hidden_size: int,
             num_heads: int,
-            time_emb_dim: int,
             rngs: nnx.rng):
         """
         Initialize a DiT block.
         """
         self.LayerNorm1 = nnx.LayerNorm(hidden_size, rngs=rngs)
         self.LayerNorm2 = nnx.LayerNorm(num_heads, rngs=rngs)
-        self.MHA = MHA(hidden, features)
-        self.linWeights = nnx.Param(jnp.ones(6, in_channels))
-        
-        self.FFN = FFN()
+        self.MHA = MHA(length, hidden_size, num_heads, rngs=rngs)
+        self.MLP = MLP(hidden_size, hidden_size*4) # Default in PyTorch implementation.
 
         # Conditional MLP
-        self.MLP = MLP()
+        self.cLinWeights = nnx.Linear(hidden_size, hidden_size*6)
 
     def forward(self, x, conditioning):
-        conditioning = self.MLP(conditioning)
+        gamma1, beta1, alpha1, gamma2, beta2, alpha2 = self.cLinWeights.value
         
-        gamma1, beta1, alpha1, gamma2, beta2, alpha2 = self.linWeights.value
         tmp = self.LayerNorm1(x)
         tmp = gamma1*tmp + beta1*conditioning
         tmp = self.MHA(tmp)
@@ -78,13 +76,38 @@ def DiTBlock(nnx.Module):
 
         tmp = self.LayerNorm2(tmp)
         tmp = gamma2*tmp + beta2*conditioning
-        tmp = self.FFN(tmp)
+        tmp = self.MLP(tmp)
         tmp = alpha2*tmp + conditioning
 
         x += tmp
 
         return x
 
+class FinalLayer():
+    def __init__(self):
+        pass
+    def forward(self):
+        pass
+
+class Config:
+    def __init__(self):
+        self.model_type = 'DiT-S'
+        self.n_layer = 12
+        self.n_head = 6
+        self.hidden_size = 384
+        self.patch_size = 8
+        self.learning_rate = 1e-4
+        self.ema = 0.9999
+        self.rngs = nnx.Rngs(42)
+
+
+class DiffusionTransformer(nnx.Module):
+    """Diffusion Transformer"""
+    def __init__(self, config: Config):
+        self.config = config
+        self.length = (32/self.config.patch_size)**2
+        self.layers = [DiTBlock(self.length, self.config.hidden_size, self.config.n_head, self.config.rngs) for _ in range(self.config.n_layer)]
+        self.final_layer = FinalLayer()
 
 
 
@@ -114,38 +137,4 @@ def train_step(model, optimizer, x, y):
   return loss
 
 
-####################################################################################
-# Hyperparameters:
-####################################################################################
 
-
-
-
-
-
-class DiTBlock(nnx.Module):
-    """Main iterated block for the diffusion transformer"""
-    def __init__(self, hidden_size, num_heads, mlp_ratio=4.0):
-
-
-        self.norm1 = nnx.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        self.attn = Attention(hidden_size, num_heads=num_heads, qkv_bias=True)
-        self.norm2 = nnx.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        mlp_hidden_dim = int(hidden_size * mlp_ratio)
-        approx_gelu = lambda: nnx.GELU(approximate="tanh")
-        self.mlp = Mlp(in_features=hidden_size, hidden_features=mlp_hidden_dim, act_layer=approx_gelu, drop=0)
-        self.adaLN_modulation = nnx.Sequential(
-            nnx.SiLU(),
-            nnx.Linear(hidden_size, 6 * hidden_size, bias=True)
-        )
-
-    def forward(self, x, c):
-        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(c).chunk(6, dim=1)
-        x = x + gate_msa.unsqueeze(1) * self.attn(modulate(self.norm1(x), shift_msa, scale_msa))
-        x = x + gate_mlp.unsqueeze(1) * self.mlp(modulate(self.norm2(x), shift_mlp, scale_mlp))
-        return x
-
-class DiffusionTransformer(nnx.Module):
-    """Diffusion Transformer"""
-    def __init__(self):
-        pass
