@@ -5,16 +5,24 @@ from jax import grad
 from flax import nnx
 import optax
         
+# To consider: change all lin shifts to (1+scale)
+
 class Config:
     def __init__(self):
         self.model_type = 'DiT-S'
+        # Patch details
         self.input_size = 32
+        self.image_channels = 4
+        self.patch_size = 8
+
+        # Architecture details
         self.n_layers = 12
         self.n_heads = 6
         self.DiT_hidden_size = 384
-        self.MLP_hidden_size = self.hidden_size * 4
-        self.patch_size = 8
-        self.token_length = (self.input_size/self.patch_size)**2
+        self.MLP_hidden_size = self.hidden_size * 4 # TODO: consider adjusting this. 
+        self.token_length = (self.input_size/self.patch_size)**2 * self.image_channels
+
+        # Training details
         self.learning_rate = 1e-4
         self.ema = 0.9999
         self.rngs = nnx.Rngs(42)
@@ -96,19 +104,19 @@ class DiTBlock(nnx.Module):
         self.cLinWeights = nnx.Linear(config.DiT_hidden_size, config.MLP_hidden_size)
 
     def forward(self, x, conditioning):
-        gamma1, beta1, alpha1, gamma2, beta2, alpha2 = self.cLinWeights.value
+        gamma1, beta1, alpha1, gamma2, beta2, alpha2 = self.cLinWeights(conditioning).value
         tmp = self.LayerNorm1(x)
-        tmp = gamma1*tmp + beta1*conditioning
+        tmp = gamma1*tmp + beta1 #*conditioning
         tmp = self.MHA(tmp)
-        tmp = alpha1*tmp + conditioning
+        tmp = alpha1*tmp #+ conditioning
 
         tmp += x
         x = tmp
 
         tmp = self.LayerNorm2(tmp)
-        tmp = gamma2*tmp + beta2*conditioning
+        tmp = gamma2*tmp + beta2 #*conditioning
         tmp = self.MLP(tmp)
-        tmp = alpha2*tmp + conditioning
+        tmp = alpha2*tmp #+ conditioning
 
         x += tmp
 
@@ -116,10 +124,24 @@ class DiTBlock(nnx.Module):
 
 class DiTFinalLayer(nnx.Module):
     def __init__(self, config: Config):
-        pass
-    def forward(self):
-        pass
+        self.LayerNorm = nnx.LayerNorm(config.DiT_hidden_size, rngs=config.rngs)
+        self.linear = nnx.Linear(config.DiT_hidden_size, config.patch_size**2*4) 
+        self.linWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size*2)
 
+    def forward(self, x, conditioning):
+        x = self.LayerNorm(x)
+        alpha, beta = self.linWeights(conditioning).value
+        x = alpha * x + beta
+        x = self.linear(x)
+        return x
+
+class DiTPatch(nnx.Module):
+    def __init__(self, config: Config):
+        pass
+    
+    def forward(self, x, c):
+        pass
+        
 
 class DiffusionTransformer(nnx.Module):
     """Diffusion Transformer"""
@@ -130,8 +152,31 @@ class DiffusionTransformer(nnx.Module):
                         DiTBlock(config) for _ in range(self.config.n_layer)
                       ]
         self.final_layer = DiTFinalLayer(config)
+        self.map_to_patches = DiTPatch(config)
+
+    def forward(self, x, conditioning):
+        
+        """
+        Forward pass of DiT.
+        x: (N, C, H, W) tensor of spatial inputs (images or latent representations of images)
+        t: (N,) tensor of diffusion timesteps
+        y: (N,) tensor of class labels
+        """
+        x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
+        t = self.t_embedder(t)                   # (N, D)
+        y = self.y_embedder(y, self.training)    # (N, D)
+        c = t + y                                # (N, D)
 
 
+        # TODO: add "patching," embedding parts, and unpatching.
+        for layer in self.layers:
+            x = layer.forward(x, conditioning)
+        x = self.final_layer(x)
+        return self.map_to_patches(x)
+            
+
+    def __call__(self, something): # TODO: fix
+        return self.forward(something)
 
 # class Model(nnx.Module):
 #   def __init__(self, din, dmid, dout, rngs: nnx.Rngs):
