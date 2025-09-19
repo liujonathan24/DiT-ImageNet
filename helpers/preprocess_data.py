@@ -1,12 +1,16 @@
 import os
+import jax.numpy as jnp
+import numy as np
 import jax_dataloader as jdl
 from jax_dataloader import Dataset, DataLoader
 from PIL import Image
 from config import trainConfig
+# from ..vae.import_sd_vae import get_sd_vae
 
 jdl.manual_seed(1234)
 
-# Data loading modified to use jax_dataloader from https://www.kaggle.com/code/liucong12601/dinov2-imagenet-training
+# Data loading inspired from https://www.kaggle.com/code/liucong12601/dinov2-imagenet-training
+# Modified as functions and to use jax dataloader
 
 class CustomImageDataset(Dataset):
     def __init__(self, samples, transform=None):
@@ -87,7 +91,6 @@ def load_data(number_classes=None):
 
     return train_dataset, valid_dataset
 
-
 def return_dataloader(train_dataset: CustomImageDataset, 
                       valid_dataset: CustomImageDataset, 
                       config: trainConfig):
@@ -116,6 +119,38 @@ def return_dataloader(train_dataset: CustomImageDataset,
     steps_per_epoch = len(train_loader)
     print(f"DataLoaders for created successfully.")
     print(f"{steps_per_epoch=}, val_steps: {len(valid_loader)}")
+
+def save_latents(dataset: CustomImageDataset, vae, params, output_dir="./data/"):
+    """
+    Given a CustomImageDataset dataset, encodes images using the VAE
+    saves the stored latents and classes. Allows every image to be 
+    encoded in a single pass prior to training. 
+    """
+    os.makedirs(output_dir, exist_ok=True)   
+
+    latents = jnp.zeros((len(dataset), 32, 32, 4), dtype=jnp.float32)
+    labels = []
+
+    for idx, (path, target) in enumerate(dataset.samples):
+        img = Image.open(path).convert("RGB")
+
+        x = jnp.asarray(img).astype(jnp.float32) / 255.0        # [0,1]
+        x = (x - 0.5) / 0.5                                     # [-1,1]
+        x = x[None, ...]                                        # [1, H, W, 3] 
+        x = jnp.transpose(x, (0, 3, 1, 2))                      # [1, 3, H, W]
+
+        # Encode image
+        distr = vae.apply({"params": params}, x, method=vae.encode, deterministic=True)
+        latent = distr.latent_dist.mean  
+        assert latent.shape == (1, 32, 32, 4)
+
+        latents = latents.at[idx].set(latent[0])
+        labels.append(int(target[2:])) # Previous two letters are n0.
+
+
+    # Save latents and labels as .npy files
+    jnp.save(os.path.join(output_dir, "latents.npy"), latents)
+    jnp.save(os.path.join(output_dir, "labels.npy"), labels)
 
 if __name__=="__main__":
     train, val = load_data()

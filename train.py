@@ -2,6 +2,7 @@ from diffusion_transformer import DiffusionTransformer
 import jax 
 import jax.numpy as jnp
 from jax import grad, vmap
+from flax import nnx
 from helpers.config import modelConfig
 import optax
 import argparse
@@ -12,6 +13,35 @@ import argparse
 # loss is l_simple 
 # # jk no vlb in the code I think? 
 # + lambda * l_vlb
+
+
+
+
+class Model(nnx.Module):
+  def __init__(self, din, dmid, dout, rngs: nnx.Rngs):
+    pass
+  def __call__(self, x):
+    pass
+  
+
+model = Model(2, 64, 3, rngs=nnx.Rngs(0))  # eager initialization
+optimizer = nnx.Optimizer(model, optax.adam(1e-3), wrt=nnx.Param)
+
+@nnx.jit  # automatic state management for JAX transforms
+def train_step(model, optimizer, x, y):
+  def loss_fn(model):
+    y_pred = model(x)  # call methods directly
+    return ((y_pred - y) ** 2).mean()
+
+  loss, grads = nnx.value_and_grad(loss_fn)(model)
+  optimizer.update(model, grads)  # in-place updates
+
+  return loss
+
+
+
+
+
 
 def main(args):
     assert args.model_config == "DiT-S", "Currently, the only model config implemented is DiT-S."
