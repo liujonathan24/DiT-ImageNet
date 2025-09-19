@@ -2,7 +2,7 @@ from diffusion_transformer import DiffusionTransformer
 import jax 
 import jax.numpy as jnp
 from jax import grad, vmap
-from config import modelConfig
+from helpers.config import modelConfig
 import optax
 import argparse
 
