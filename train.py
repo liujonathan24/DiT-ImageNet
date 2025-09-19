@@ -16,7 +16,7 @@ import argparse
 def main(args):
     assert args.model_config == "DiT-S", "Currently, the only model config implemented is DiT-S."
     config = modelConfig()
-    batch = 8
+    batch = 256
     # test_input = jnp.ones((batch, config.token_length, config.DiT_hidden_size))
     # test_condit = jnp.ones((batch, config.DiT_hidden_size))
 
