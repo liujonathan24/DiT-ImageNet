@@ -1,11 +1,10 @@
 import os
 import jax.numpy as jnp
-import numy as np
 import jax_dataloader as jdl
 from jax_dataloader import Dataset, DataLoader
 from PIL import Image
 from config import trainConfig
-# from ..vae.import_sd_vae import get_sd_vae
+from .vae.import_sd_vae import get_sd_vae
 
 jdl.manual_seed(1234)
 
