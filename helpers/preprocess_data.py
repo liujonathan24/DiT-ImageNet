@@ -3,6 +3,7 @@ import jax.numpy as jnp
 import jax_dataloader as jdl
 from jax_dataloader import Dataset, DataLoader
 from PIL import Image
+from jax import image as jimage
 from helpers.config import trainConfig
 from vae.import_sd_vae import get_sd_vae
 
@@ -119,6 +120,63 @@ def return_dataloader(train_dataset: CustomImageDataset,
     print(f"DataLoaders for created successfully.")
     print(f"{steps_per_epoch=}, val_steps: {len(valid_loader)}")
 
+def crop_photo(x: jnp.array):
+    """
+    Crops by scaling shorter dimension to 256 and taking a center crop.
+    Output array will be 256x256x3.
+    """
+    from jax import image as jimage
+
+def resize_and_center_crop(
+    img,
+    resize_short=256,
+    crop_size=256,
+    method="linear"
+):
+    """
+    img: JAX or NumPy array with shape (H, W, C) and dtype float32/uint8
+    returns: JAX array with shape (crop_size, crop_size, C) or (C, crop_size, crop_size)
+    """
+    x = jnp.asarray(img)
+    if x.ndim != 3:
+        raise ValueError(f"Expected HWC image, got shape {x.shape}")
+    H, W, C = x.shape
+
+    # scale so that the shorter side == resize_short
+    short = min(H, W)
+    scale = float(resize_short) / float(short)
+    new_h = max(1, int(round(H * scale)))
+    new_w = max(1, int(round(W * scale)))
+
+    x_resized = jimage.resize(x, (new_h, new_w, C), method=method)
+
+    # pad if needed so that we can center-crop crop_size x crop_size
+    # should not be necessary with default settings.
+    pad_h = max(0, crop_size - new_h)
+    pad_w = max(0, crop_size - new_w)
+    pad_top = pad_h // 2
+    pad_bottom = pad_h - pad_top
+    pad_left = pad_w // 2
+    pad_right = pad_w - pad_left
+
+    if pad_h > 0 or pad_w > 0:
+        # set padding to 0
+        x_resized = jnp.pad(
+            x_resized,
+            ((pad_top, pad_bottom), (pad_left, pad_right), (0, 0)),
+            mode="constant",
+            constant_values=0.0,
+        )
+        new_h = x_resized.shape[0]
+        new_w = x_resized.shape[1]
+
+    # center crop crop_size x crop_size
+    top = max(0, (new_h - crop_size) // 2)
+    left = max(0, (new_w - crop_size) // 2)
+    x_cropped = x_resized[top:top + crop_size, left:left + crop_size, :]
+    
+    return x_cropped
+
 def save_latents(dataset: CustomImageDataset, vae, params, output_dir="./data/"):
     """
     Given a CustomImageDataset dataset, encodes images using the VAE
@@ -126,7 +184,7 @@ def save_latents(dataset: CustomImageDataset, vae, params, output_dir="./data/")
     encoded in a single pass prior to training. 
     """
     os.makedirs(output_dir, exist_ok=True)   
-
+    print(f"Saving files to: {os.path.abspath(output_dir)}")
     latents = jnp.zeros((len(dataset), 32, 32, 4), dtype=jnp.float32)
     labels = []
 
@@ -134,6 +192,8 @@ def save_latents(dataset: CustomImageDataset, vae, params, output_dir="./data/")
         img = Image.open(path).convert("RGB")
 
         x = jnp.asarray(img).astype(jnp.float32) / 255.0        # [0,1]
+        x = resize_and_center_crop(x)
+        # print(x.shape)
         x = (x - 0.5) / 0.5                                     # [-1,1]
         x = x[None, ...]                                        # [1, H, W, 3] 
         x = jnp.transpose(x, (0, 3, 1, 2))                      # [1, 3, H, W]
@@ -141,15 +201,24 @@ def save_latents(dataset: CustomImageDataset, vae, params, output_dir="./data/")
         # Encode image
         distr = vae.apply({"params": params}, x, method=vae.encode, deterministic=True)
         latent = distr.latent_dist.mean  
+        # print(latent.shape)
         assert latent.shape == (1, 32, 32, 4)
 
         latents = latents.at[idx].set(latent[0])
-        labels.append(int(target[2:])) # Previous two letters are n0.
-
+        # print(target)
+        labels.append(target)
+        
+        if idx%100 == 0:
+            print(f"{idx} images processed out of {len(dataset.samples)}.")
 
     # Save latents and labels as .npy files
     jnp.save(os.path.join(output_dir, "latents.npy"), latents)
     jnp.save(os.path.join(output_dir, "labels.npy"), labels)
 
+
+
 if __name__=="__main__":
     train, val = load_data()
+    vae, params  = get_sd_vae()
+    save_latents(train, vae, params, output_dir="./data/train_latent")
+    save_latents(val, vae, params, output_dir="./data/test_latent")
