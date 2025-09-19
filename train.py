@@ -8,6 +8,11 @@ import argparse
 
 
 
+# https://proceedings.neurips.cc/paper_files/paper/2021/file/49ad23d1ec9fa4bd8d77d02681df5cfa-Paper.pdf
+# loss is l_simple 
+# # jk no vlb in the code I think? 
+# + lambda * l_vlb
+
 def main(args):
     assert args.model_config == "DiT-S", "Currently, the only model config implemented is DiT-S."
     config = modelConfig()
