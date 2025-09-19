@@ -2,7 +2,7 @@ import os
 import jax_dataloader as jdl
 from jax_dataloader import Dataset, DataLoader
 from PIL import Image
-from helpers.config import trainConfig
+from config import trainConfig
 
 jdl.manual_seed(1234)
 
@@ -25,7 +25,7 @@ class CustomImageDataset(Dataset):
         return sample, target
 
 def load_data(number_classes=None):
-
+    print("Loading data")
     BASE_PATH = "./data/"
 
     TRAIN_PATHS = [
@@ -117,4 +117,5 @@ def return_dataloader(train_dataset: CustomImageDataset,
     print(f"DataLoaders for created successfully.")
     print(f"{steps_per_epoch=}, val_steps: {len(valid_loader)}")
 
-
+if __name__=="__main__":
+    train, val = load_data()
