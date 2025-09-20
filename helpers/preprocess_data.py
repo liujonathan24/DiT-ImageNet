@@ -173,43 +173,58 @@ def resize_and_center_crop(
     
     return x_cropped
 
-def save_latents(dataset: CustomImageDataset, vae, params, output_dir="./data/"):
+def save_latents(dataset: CustomImageDataset, vae, params, config: trainConfig, output_dir="./data/"):
     """
     Given a CustomImageDataset dataset, encodes images using the VAE
     saves the stored latents and classes. Allows every image to be 
     encoded in a single pass prior to training. 
     """
-
     os.makedirs(output_dir, exist_ok=True)   
     print(f"Saving files to: {os.path.abspath(output_dir)}")
-    latents = jnp.zeros((len(dataset), 32, 32, 4), dtype=jnp.float32)
-    labels = []
-    for idx, (path, target) in tqdm(enumerate(dataset.samples), total=len(dataset.samples)):
-        img = Image.open(path).convert("RGB")
 
-        x = jnp.asarray(img).astype(jnp.float16) / 255.0        # [0,1]
-        x = resize_and_center_crop(x)
-        # print(x.shape)
-        x = (x - 0.5) / 0.5                                     # [-1,1]
-        x = x[None, ...]                                        # [1, H, W, 3] 
-        x = jnp.transpose(x, (0, 3, 1, 2))                      # [1, 3, H, W]
+    dataloader = DataLoader(
+        dataset=dataset,
+        backend='jax',
+        batch_size=config.batch_size,
+        shuffle=False,
+        num_workers=2,
+        pin_memory=True
+    )
+
+    latents = jnp.zeros((len(dataset), 32, 32, 4), dtype=jnp.float16)
+    labels = []
+
+    for i, (batch_images, batch_labels) in tqdm(enumerate(dataloader), total=len(dataloader)):
+        # Ensure batch_images is a list of PIL images
+        if not isinstance(batch_images, list):
+            batch_images = [Image.fromarray(img) for img in batch_images]
+
+        # Preprocess images in the batch
+        processed_images = []
+        for img in batch_images:
+            x = jnp.asarray(img).astype(jnp.float32) / 255.0
+            x = resize_and_center_crop(x)
+            x = (x - 0.5) / 0.5
+            processed_images.append(x)
+        
+        # Stack images into a single batch
+        batch_x = jnp.stack(processed_images).astype(jnp.float16)
+        batch_x = jnp.transpose(batch_x, (0, 3, 1, 2))
 
         # Encode image
-        distr = vae.apply({"params": params}, x, method=vae.encode, deterministic=True)
-        latent = distr.latent_dist.mean  
-        # print(latent.shape)
-        assert latent.shape == (1, 32, 32, 4)
+        distr = vae.apply({"params": params}, batch_x, method=vae.encode, deterministic=True)
+        latent = distr.latent_dist.mean
 
-        latents = latents.at[idx].set(latent[0])
-        # print(target)
-        labels.append(target)
-    
-        if idx%100 == 0:
-            print(f"{idx} images processed out of {len(dataset.samples)}.")
+        # Calculate start and end indices for this batch
+        start_idx = i * config.batch_size
+        end_idx = start_idx + latent.shape[0]
+
+        latents = latents.at[start_idx:end_idx].set(latent)
+        labels.extend(batch_labels)
 
     # Save latents and labels as .npy files
     jnp.save(os.path.join(output_dir, "latents.npy"), latents)
-    jnp.save(os.path.join(output_dir, "labels.npy"), labels)
+    jnp.save(os.path.join(output_dir, "labels.npy"), jnp.array(labels))
 
 
 
