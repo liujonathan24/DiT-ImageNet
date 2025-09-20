@@ -235,5 +235,6 @@ if __name__=="__main__":
         print(f"JAX is running on: {jax.default_backend()}")
         train, val = load_data()
         vae, params  = get_sd_vae()
-        save_latents(train, vae, params, output_dir="./data/train_latent")
-        save_latents(val, vae, params, output_dir="./data/test_latent")
+        config = trainConfig()
+        save_latents(train, vae, params, config, output_dir="./data/train_latent")
+        save_latents(val, vae, params, config, output_dir="./data/test_latent")
