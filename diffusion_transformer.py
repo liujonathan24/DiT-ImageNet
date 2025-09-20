@@ -33,7 +33,7 @@ class MHA(nnx.Module):
         return values, attention               # attention: [h, L, L]
   
     def scaled_dot_product(self, q, k, v):
-        """Implements scaled dot product with PyTorch's functionality"""
+        """Implements scaled dot product with Pyjnp's functionality"""
         # q, k, v: [num_heads, L, d_head]
         d = q.shape[-1]
         scale = 1.0 / jnp.sqrt(d)
@@ -123,43 +123,82 @@ class DiTFinalLayer(nnx.Module):
 class DiTPatch(nnx.Module):
     def __init__(self, config: modelConfig):
         self.config = config
-    
+        self.input_embeddings = MLP(config)
+
     def convert_to_patches(self, input):
         input = input.reshape((self.patch_size, self.patch_size, 4))
+        input = self.input_embeddings(input)
         return input
     
     def convert_to_stream(self, input):
         input = input.reshape(-1)
         return input
-        
+
 class DiffusionTransformer(nnx.Module):
     """Diffusion Transformer"""
     def __init__(self, config: modelConfig):
         
         self.config = config
-        self.length = (32/self.config.patch_size)**2
+        self.length = config.token_length 
         self.layers = [
                         DiTBlock(config) for _ in range(self.config.n_layer)
                       ]
         self.final_layer = DiTFinalLayer(config)
         self.mapper = DiTPatch(config)
+        self.time_MLP = MLP()
 
-    def forward(self, x, conditioning):
+        self.pos_embed = self.pos_embed() #TODO: freeze these values.
+    
+    def pos_embed(self):
+        # Implements: pos / 10000^(2i/d_model)
+        # Implementation from https://medium.com/thedeephub/positional-encoding-explained-a-deep-dive-into-transformer-pe-65cfe8cfe10b  
+        position = jnp.arange(self.config.token_length)[:, jnp.newaxis]
+        # The original formula pos / 10000^(2i/d_model) is equivalent to pos * (1 / 10000^(2i/d_model)).
+        # I use the below version for numerical stability
+        div_term = jnp.exp(jnp.arange(0, self.config.DiT_hidden_size, 2) * -(jnp.log(10000.0) / self.config.DiT_hidden_size))
+        
+        pe = jnp.zeros((self.config.token_length, self.config.DiT_hidden_size))
+        pe[:, 0::2] = jnp.sin(position * div_term)
+        pe[:, 1::2] = jnp.cos(position * div_term)
+        
+        return pe
+
+    def time_embed(self, t, max_period=10000):
+        """
+        From: https://github.com/facebookresearch/DiT/blob/ed81ce2229091fd4ecc9a223645f95cf379d582b/models.py#L27
+        # https://github.com/openai/glide-text2im/blob/main/glide_text2im/nn.py 
+        Create sinusoidal timestep embeddings.
+        :param t: a 1-D Tensor of N indices, one per batch element. These may be fractional.
+        :param dim: the dimension of the output.
+        :param max_period: controls the minimum frequency of the embeddings.
+        :return: an (N, D) Tensor of positional embeddings.
+        """
+        half = self.config.DiT_hidden_size // 2
+        freqs = jnp.exp(
+            -jnp.log(max_period) * jnp.arange(start=0, end=half, dtype=jnp.float32) / half
+        ).to(device=t.device)
+        args = t[:, None].float() * freqs[None]
+        embedding = jnp.cat([jnp.cos(args), jnp.sin(args)], dim=-1)
+        if self.config.DiT_hidden_size % 2:
+            embedding = jnp.cat([embedding, jnp.zeros_like(embedding[:, :1])], dim=-1)
+        return embedding
+
+    def forward(self, x, timestep):
         """
         Forward pass of DiT.
         x: (N, C, H, W) tensor of spatial inputs (images or latent representations of images)
         t: (N,) tensor of diffusion timesteps
         y: (N,) tensor of class labels
         """
-        x = self.mapper.convert_to_stream(x)
+        print(x.shape, timestep.shape)
+        x = self.mapper.convert_to_stream(x) # Convert [32, 32, 4] to [32*32*4] & applies MLP
+        print(x.shape)
+        x = x + self.pos_embed # Adds sinusoidal PE
+        print(x.shape)
+        
+        conditioning = self.time_MLP(self.time_embed(timestep)) # Embeds single timestep to [hidden_dim]
+        print(conditioning.shape)
 
-        x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
-        t = self.t_embedder(t)                   # (N, D)
-        y = self.y_embedder(y, self.training)    # (N, D)
-        c = t + y                                # (N, D)
-
-
-        # TODO: embedding parts,
         for layer in self.layers:
             x = layer.forward(x, conditioning)
         x = self.final_layer(x)

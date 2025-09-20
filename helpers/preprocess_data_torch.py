@@ -205,7 +205,10 @@ def save_latents(dataset: CustomImageDataset, vae, config: trainConfig, output_d
     np.save(os.path.join(output_dir, "latents.npy"), latents)
     np.save(os.path.join(output_dir, "labels.npy"), np.array(labels))
 
-
+def load_latents(input_dir):
+    latents = np.load(os.path.join(input_dir, "latents.npy"))
+    labels = np.load(os.path.join(input_dir, "labels.npy"))
+    return latents, labels
 
 if __name__=="__main__":
     train, val = load_data()

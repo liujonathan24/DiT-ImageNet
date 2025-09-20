@@ -25,7 +25,7 @@ class trainConfig:
         self.learning_rate = 1e-4
         self.ema = 0.9999
 
-        self.tmax = 1000 
+        self.tmax = 10000 
         self.linear_variance_min = 1e-4
         self.linear_variance_max = 2e-2
         

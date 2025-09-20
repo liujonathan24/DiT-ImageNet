@@ -3,9 +3,11 @@ import jax
 import jax.numpy as jnp
 from jax import grad, vmap
 from flax import nnx
-from helpers.config import modelConfig
+from helpers.config import modelConfig, trainConfig
 import optax
 import argparse
+from helpers.preprocess_data_torch import load_latents
+from tqdm import tqdm
 
 
 
@@ -14,24 +16,11 @@ import argparse
 # # jk no vlb in the code I think? 
 # + lambda * l_vlb
 
-
-
-
-class Model(nnx.Module):
-  def __init__(self, din, dmid, dout, rngs: nnx.Rngs):
-    pass
-  def __call__(self, x):
-    pass
-  
-
-model = Model(2, 64, 3, rngs=nnx.Rngs(0))  # eager initialization
-optimizer = nnx.Optimizer(model, optax.adam(1e-3), wrt=nnx.Param)
-
 @nnx.jit  # automatic state management for JAX transforms
 def train_step(model, optimizer, x, y):
   def loss_fn(model):
-    y_pred = model(x)  # call methods directly
-    return ((y_pred - y) ** 2).mean()
+    y_pred = model(x)  
+    return optax.losses.squared_error(y_pred, y).mean()
 
   loss, grads = nnx.value_and_grad(loss_fn)(model)
   optimizer.update(model, grads)  # in-place updates
@@ -39,27 +28,30 @@ def train_step(model, optimizer, x, y):
   return loss
 
 
-
-
-
-
 def main(args):
     assert args.model_config == "DiT-S", "Currently, the only model config implemented is DiT-S."
-    config = modelConfig()
-    batch = 256
-    # test_input = jnp.ones((batch, config.token_length, config.DiT_hidden_size))
-    # test_condit = jnp.ones((batch, config.DiT_hidden_size))
 
-    test_DiTBlock = DiffusionTransformer(config)
+    trainConfig = trainConfig()
+    train_latents, train_labels = load_latents("./data/train_latent")
+    test_latents, test_labels = load_latents("./data/test_latent")
 
-    # x = test_DiTBlock(test_input, test_condit)
-    # print(test_input.shape, x.shape)
 
-    # for num_batches in range(batches):
-        # test_DiTBlock
+    modelConfig = modelConfig()
+    test_DiT = DiffusionTransformer(modelConfig)
+    optimizer = nnx.Optimizer(test_DiT, optax.adam(1e-3), wrt=nnx.Param)
 
-    def loss(pred, true_noise):
-        loss = optax.losses.squared_error(pred, true_noise).mean()
+    for batch in tqdm(train_latents): # maybe convert to dataloader again?
+        #TODO: 
+        # sampled_batch = 
+        # noise_level = 
+        # noise = 
+
+        x = None # sampled batch + noise * noise_level
+        y = None # noise * noise_level
+
+        train_step(test_DiT, optimizer, x, y)
+        # Evaluate?
+        #TODO: 
     
 
 if __name__ == "__main__":
