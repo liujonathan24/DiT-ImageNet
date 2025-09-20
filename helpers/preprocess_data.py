@@ -10,8 +10,9 @@ from vae.import_sd_vae import get_sd_vae
 
 jdl.manual_seed(1234)
 
-# Data loading inspired from https://www.kaggle.com/code/liucong12601/dinov2-imagenet-training
-# Modified as functions and to use jax dataloader
+# Data loading class (CustomImageDataset) inspired from https://www.kaggle.com/code/liucong12601/dinov2-imagenet-training
+# Heavily modified the code to become load_data & return_dataloader functions, including the use of jax dataloader instead of torch
+# The rest is my code
 
 class CustomImageDataset(Dataset):
     def __init__(self, samples, transform=None):
@@ -121,13 +122,6 @@ def return_dataloader(train_dataset: CustomImageDataset,
     print(f"DataLoaders for created successfully.")
     print(f"{steps_per_epoch=}, val_steps: {len(valid_loader)}")
 
-def crop_photo(x: jnp.array):
-    """
-    Crops by scaling shorter dimension to 256 and taking a center crop.
-    Output array will be 256x256x3.
-    """
-    from jax import image as jimage
-
 def resize_and_center_crop(
     img,
     resize_short=256,
@@ -184,37 +178,34 @@ def save_latents(dataset: CustomImageDataset, vae, params, output_dir="./data/")
     saves the stored latents and classes. Allows every image to be 
     encoded in a single pass prior to training. 
     """
-    print(jax.devices())
-    gpu0 = jax.devices("cuda")[0]
-    with jax.default_device(gpu0):
 
-        os.makedirs(output_dir, exist_ok=True)   
-        print(f"Saving files to: {os.path.abspath(output_dir)}")
-        latents = jnp.zeros((len(dataset), 32, 32, 4), dtype=jnp.float32)
-        labels = []
+    os.makedirs(output_dir, exist_ok=True)   
+    print(f"Saving files to: {os.path.abspath(output_dir)}")
+    latents = jnp.zeros((len(dataset), 32, 32, 4), dtype=jnp.float32)
+    labels = []
 
-        for idx, (path, target) in enumerate(dataset.samples):
-            img = Image.open(path).convert("RGB")
+    for idx, (path, target) in enumerate(dataset.samples):
+        img = Image.open(path).convert("RGB")
 
-            x = jnp.asarray(img).astype(jnp.float32) / 255.0        # [0,1]
-            x = resize_and_center_crop(x)
-            # print(x.shape)
-            x = (x - 0.5) / 0.5                                     # [-1,1]
-            x = x[None, ...]                                        # [1, H, W, 3] 
-            x = jnp.transpose(x, (0, 3, 1, 2))                      # [1, 3, H, W]
+        x = jnp.asarray(img).astype(jnp.float32) / 255.0        # [0,1]
+        x = resize_and_center_crop(x)
+        # print(x.shape)
+        x = (x - 0.5) / 0.5                                     # [-1,1]
+        x = x[None, ...]                                        # [1, H, W, 3] 
+        x = jnp.transpose(x, (0, 3, 1, 2))                      # [1, 3, H, W]
 
-            # Encode image
-            distr = vae.apply({"params": params}, x, method=vae.encode, deterministic=True)
-            latent = distr.latent_dist.mean  
-            # print(latent.shape)
-            assert latent.shape == (1, 32, 32, 4)
+        # Encode image
+        distr = vae.apply({"params": params}, x, method=vae.encode, deterministic=True)
+        latent = distr.latent_dist.mean  
+        # print(latent.shape)
+        assert latent.shape == (1, 32, 32, 4)
 
-            latents = latents.at[idx].set(latent[0])
-            # print(target)
-            labels.append(target)
-        
-            if idx%100 == 0:
-                print(f"{idx} images processed out of {len(dataset.samples)}.")
+        latents = latents.at[idx].set(latent[0])
+        # print(target)
+        labels.append(target)
+    
+        if idx%100 == 0:
+            print(f"{idx} images processed out of {len(dataset.samples)}.")
 
     # Save latents and labels as .npy files
     jnp.save(os.path.join(output_dir, "latents.npy"), latents)
@@ -223,7 +214,11 @@ def save_latents(dataset: CustomImageDataset, vae, params, output_dir="./data/")
 
 
 if __name__=="__main__":
-    train, val = load_data()
-    vae, params  = get_sd_vae()
-    save_latents(train, vae, params, output_dir="./data/train_latent")
-    save_latents(val, vae, params, output_dir="./data/test_latent")
+    print(jax.devices())
+    gpu0 = jax.devices("cuda")[0]
+    with jax.default_device(gpu0):
+
+        train, val = load_data()
+        vae, params  = get_sd_vae()
+        save_latents(train, vae, params, output_dir="./data/train_latent")
+        save_latents(val, vae, params, output_dir="./data/test_latent")
