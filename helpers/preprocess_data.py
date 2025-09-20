@@ -4,6 +4,7 @@ import jax_dataloader as jdl
 from jax_dataloader import Dataset, DataLoader
 from PIL import Image
 from jax import image as jimage
+import jax
 from helpers.config import trainConfig
 from vae.import_sd_vae import get_sd_vae
 
@@ -183,33 +184,37 @@ def save_latents(dataset: CustomImageDataset, vae, params, output_dir="./data/")
     saves the stored latents and classes. Allows every image to be 
     encoded in a single pass prior to training. 
     """
-    os.makedirs(output_dir, exist_ok=True)   
-    print(f"Saving files to: {os.path.abspath(output_dir)}")
-    latents = jnp.zeros((len(dataset), 32, 32, 4), dtype=jnp.float32)
-    labels = []
+    print(jax.devices())
+    gpu0 = jax.devices("cuda")[0]
+    with jax.default_device(gpu0):
 
-    for idx, (path, target) in enumerate(dataset.samples):
-        img = Image.open(path).convert("RGB")
+        os.makedirs(output_dir, exist_ok=True)   
+        print(f"Saving files to: {os.path.abspath(output_dir)}")
+        latents = jnp.zeros((len(dataset), 32, 32, 4), dtype=jnp.float32)
+        labels = []
 
-        x = jnp.asarray(img).astype(jnp.float32) / 255.0        # [0,1]
-        x = resize_and_center_crop(x)
-        # print(x.shape)
-        x = (x - 0.5) / 0.5                                     # [-1,1]
-        x = x[None, ...]                                        # [1, H, W, 3] 
-        x = jnp.transpose(x, (0, 3, 1, 2))                      # [1, 3, H, W]
+        for idx, (path, target) in enumerate(dataset.samples):
+            img = Image.open(path).convert("RGB")
 
-        # Encode image
-        distr = vae.apply({"params": params}, x, method=vae.encode, deterministic=True)
-        latent = distr.latent_dist.mean  
-        # print(latent.shape)
-        assert latent.shape == (1, 32, 32, 4)
+            x = jnp.asarray(img).astype(jnp.float32) / 255.0        # [0,1]
+            x = resize_and_center_crop(x)
+            # print(x.shape)
+            x = (x - 0.5) / 0.5                                     # [-1,1]
+            x = x[None, ...]                                        # [1, H, W, 3] 
+            x = jnp.transpose(x, (0, 3, 1, 2))                      # [1, 3, H, W]
 
-        latents = latents.at[idx].set(latent[0])
-        # print(target)
-        labels.append(target)
+            # Encode image
+            distr = vae.apply({"params": params}, x, method=vae.encode, deterministic=True)
+            latent = distr.latent_dist.mean  
+            # print(latent.shape)
+            assert latent.shape == (1, 32, 32, 4)
+
+            latents = latents.at[idx].set(latent[0])
+            # print(target)
+            labels.append(target)
         
-        if idx%100 == 0:
-            print(f"{idx} images processed out of {len(dataset.samples)}.")
+            if idx%100 == 0:
+                print(f"{idx} images processed out of {len(dataset.samples)}.")
 
     # Save latents and labels as .npy files
     jnp.save(os.path.join(output_dir, "latents.npy"), latents)
