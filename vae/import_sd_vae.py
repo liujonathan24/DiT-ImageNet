@@ -32,4 +32,4 @@ def get_sd_vae(cache_dir: str = "./vae/jax_sd-vae-ft-ema", dtype=jnp.float32):
 
 
 if __name__=="__main__":
-    vae, params = get_sd_vae("./vae/jax_sd-vae-ft-ema", jnp.float32)
+    vae, params = get_sd_vae("./vae/jax_sd-vae-ft-ema", jnp.float16)

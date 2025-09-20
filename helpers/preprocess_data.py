@@ -7,6 +7,7 @@ from jax import image as jimage
 import jax
 from helpers.config import trainConfig
 from vae.import_sd_vae import get_sd_vae
+from tqdm import tqdm
 
 jdl.manual_seed(1234)
 
@@ -183,11 +184,10 @@ def save_latents(dataset: CustomImageDataset, vae, params, output_dir="./data/")
     print(f"Saving files to: {os.path.abspath(output_dir)}")
     latents = jnp.zeros((len(dataset), 32, 32, 4), dtype=jnp.float32)
     labels = []
-
-    for idx, (path, target) in enumerate(dataset.samples):
+    for idx, (path, target) in tqdm(enumerate(dataset.samples), total=len(dataset.samples)):
         img = Image.open(path).convert("RGB")
 
-        x = jnp.asarray(img).astype(jnp.float32) / 255.0        # [0,1]
+        x = jnp.asarray(img).astype(jnp.float16) / 255.0        # [0,1]
         x = resize_and_center_crop(x)
         # print(x.shape)
         x = (x - 0.5) / 0.5                                     # [-1,1]
@@ -217,7 +217,7 @@ if __name__=="__main__":
     print(jax.devices())
     gpu0 = jax.devices("cuda")[0]
     with jax.default_device(gpu0):
-
+        print(f"JAX is running on: {jax.default_backend()}")
         train, val = load_data()
         vae, params  = get_sd_vae()
         save_latents(train, vae, params, output_dir="./data/train_latent")
