@@ -81,8 +81,9 @@ class DiTBlock(nnx.Module):
     
     def __call__(self, x, conditioning):
         """Uses vmap to process batched inputs."""
-        func = lambda x, condit: self.forward(x, condit)
-        return vmap(func, in_axes=(0, 0), out_axes=0)(x, conditioning)
+        return self.forward(x, conditioning)
+        # func = lambda x, condit: self.forward(x, condit)
+        # return vmap(func, in_axes=(0, 0), out_axes=0)(x, conditioning)
 
     def forward(self, x, conditioning):
         print(x.shape, conditioning.shape)
@@ -213,7 +214,10 @@ class DiffusionTransformer(nnx.Module):
             
 
     def __call__(self, x, conditioning): 
-        return self.forward(x, conditioning)
+        """Uses vmap to process batched inputs."""
+        func = lambda x, conditioning: self.forward(x, conditioning)
+        return vmap(func, in_axes=(0, 0), out_axes=0)(x, conditioning)
+        # return self.forward(x, conditioning)
 
 if __name__=="__main__":
   # Testing
