@@ -14,7 +14,7 @@ class modelConfig:
         self.n_heads = 6
         self.DiT_hidden_size = 384
         self.MLP_hidden_size = self.DiT_hidden_size * 4 # TODO: consider adjusting this. 
-        self.token_length = int((self.input_size/self.patch_size)**2 * self.image_channels)
+        self.token_length = int((self.input_size/self.patch_size)**2)
 
 class trainConfig:
     def __init__(self):
