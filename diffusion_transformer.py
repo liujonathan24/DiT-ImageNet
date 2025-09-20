@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 from jax import grad, vmap
 from flax import nnx
-from config import modelConfig
+from helpers.config import modelConfig
         
 
 class MHA(nnx.Module):
@@ -110,8 +110,8 @@ class DiTFinalLayer(nnx.Module):
     def __init__(self, config: modelConfig):
         
         self.LayerNorm = nnx.LayerNorm(config.DiT_hidden_size, rngs=config.rngs)
-        self.linear = nnx.Linear(config.DiT_hidden_size, config.patch_size**2*4) 
-        self.linWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size*2)
+        self.linear = nnx.Linear(config.DiT_hidden_size, config.patch_size**2*4, rngs=config.rngs) 
+        self.linWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size*2, rngs=config.rngs)
 
     def forward(self, x, conditioning):
         x = self.LayerNorm(x)
@@ -126,12 +126,12 @@ class DiTPatch(nnx.Module):
         self.input_embeddings = MLP(config)
 
     def convert_to_patches(self, input):
-        input = input.reshape((self.patch_size, self.patch_size, 4))
-        input = self.input_embeddings(input)
+        input = input.reshape((self.patch_size, self.patch_size, 4)) 
         return input
     
     def convert_to_stream(self, input):
-        input = input.reshape(-1)
+        input = input.reshape(-1, self.config.token_length, self.config.DiT_hidden_size)
+        input = self.input_embeddings(input)
         return input
 
 class DiffusionTransformer(nnx.Module):
@@ -141,11 +141,11 @@ class DiffusionTransformer(nnx.Module):
         self.config = config
         self.length = config.token_length 
         self.layers = [
-                        DiTBlock(config) for _ in range(self.config.n_layer)
+                        DiTBlock(config) for _ in range(self.config.n_layers)
                       ]
         self.final_layer = DiTFinalLayer(config)
         self.mapper = DiTPatch(config)
-        self.time_MLP = MLP()
+        self.time_MLP = MLP(config)
 
         self.pos_embed = self.pos_embed() #TODO: freeze these values.
     
@@ -158,8 +158,8 @@ class DiffusionTransformer(nnx.Module):
         div_term = jnp.exp(jnp.arange(0, self.config.DiT_hidden_size, 2) * -(jnp.log(10000.0) / self.config.DiT_hidden_size))
         
         pe = jnp.zeros((self.config.token_length, self.config.DiT_hidden_size))
-        pe[:, 0::2] = jnp.sin(position * div_term)
-        pe[:, 1::2] = jnp.cos(position * div_term)
+        pe.at[:, 0::2].set(jnp.sin(position * div_term))
+        pe.at[:, 1::2].set(jnp.cos(position * div_term))
         
         return pe
 
@@ -175,10 +175,10 @@ class DiffusionTransformer(nnx.Module):
         """
         half = self.config.DiT_hidden_size // 2
         freqs = jnp.exp(
-            -jnp.log(max_period) * jnp.arange(start=0, end=half, dtype=jnp.float32) / half
-        ).to(device=t.device)
-        args = t[:, None].float() * freqs[None]
-        embedding = jnp.cat([jnp.cos(args), jnp.sin(args)], dim=-1)
+            -jnp.log(max_period) * jnp.arange(start=0, stop=half, dtype=jnp.float32) / half
+        )
+        args = jnp.float32(t[:, None]) * freqs[None]
+        embedding = jnp.concatenate([jnp.cos(args), jnp.sin(args)], axis=-1)
         if self.config.DiT_hidden_size % 2:
             embedding = jnp.cat([embedding, jnp.zeros_like(embedding[:, :1])], dim=-1)
         return embedding
@@ -190,23 +190,24 @@ class DiffusionTransformer(nnx.Module):
         t: (N,) tensor of diffusion timesteps
         y: (N,) tensor of class labels
         """
-        print(x.shape, timestep.shape)
+        print(f"Forward shapes: {x.shape, timestep.shape}")
         x = self.mapper.convert_to_stream(x) # Convert [32, 32, 4] to [32*32*4] & applies MLP
-        print(x.shape)
+        print(f"Shape after stream: {x.shape}")
         x = x + self.pos_embed # Adds sinusoidal PE
-        print(x.shape)
+        print(f"After pos embed: {x.shape}")
         
         conditioning = self.time_MLP(self.time_embed(timestep)) # Embeds single timestep to [hidden_dim]
-        print(conditioning.shape)
+        print(f"Post conditioning: {conditioning.shape}")
 
         for layer in self.layers:
             x = layer.forward(x, conditioning)
+            print("Post layer: {x.shape}")
         x = self.final_layer(x)
         return self.mapper.convert_to_patches(x)
             
 
-    def __call__(self, something): # TODO: fix
-        return self.forward(something)
+    def __call__(self, x, conditioning): 
+        return self.forward(x, conditioning)
 
 if __name__=="__main__":
   # Testing
@@ -234,11 +235,16 @@ if __name__=="__main__":
     batch = 8
     test_input = jnp.ones((batch, config.token_length, config.DiT_hidden_size))
     test_condit = jnp.ones((batch, config.DiT_hidden_size))
+    test_timesteps = jnp.ones(batch)
 
     test_DiTBlock = DiTBlock(config)
     x = test_DiTBlock(test_input, test_condit)
-    print(test_input.shape, x.shape)
-
+    # print(test_input.shape, x.shape)
+    
+    test_input = jnp.ones((batch, 32, 32, 4))
+    test_DiT = DiffusionTransformer(config)
+    x = test_DiT(test_input, test_timesteps)
+    print(x.shape)
 
 # To consider: change all lin shifts to (1+scale)
 
