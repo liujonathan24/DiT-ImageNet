@@ -5,6 +5,7 @@ from jax_dataloader import Dataset, DataLoader
 from PIL import Image
 from jax import image as jimage
 import jax
+import numpy as np
 from helpers.config import trainConfig
 from vae.import_sd_vae import get_sd_vae
 from tqdm import tqdm
@@ -24,12 +25,23 @@ class CustomImageDataset(Dataset):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        path, target = self.samples[idx]
-        with open(path, 'rb') as f:
-            sample = Image.open(f).convert('RGB')
-        if self.transform:
-            sample = self.transform(sample)
-        return sample, target
+        print(idx)
+        print(self.samples[idx].shape)
+        #if isinstance(idx, np.ndarray):
+        #    idx = idx.item() 
+        output = self.samples[idx]
+        try:
+            paths, targets = output[:, 0], output[:, 1]
+        except:
+            paths, targets = output
+            paths = [paths]
+            targets = [targets]
+        samples = []
+        for path in paths:
+            with open(path, 'rb') as f:
+                sample = Image.open(f).convert('RGB')
+            samples.append(np.array(sample))
+        return samples, targets
 
 def load_data(number_classes=None):
     print("Loading data")
@@ -85,8 +97,8 @@ def load_data(number_classes=None):
                     item = (path, class_idx)
                     valid_samples.append(item)
 
-    train_dataset = CustomImageDataset(train_samples)
-    valid_dataset = CustomImageDataset(valid_samples)
+    train_dataset = CustomImageDataset(np.array(train_samples))
+    valid_dataset = CustomImageDataset(np.array(valid_samples))
 
 
     print(f"Total training images ({number_classes} classes): {len(train_dataset)}")
@@ -205,6 +217,7 @@ def save_latents(dataset: CustomImageDataset, vae, params, config: trainConfig, 
             x = jnp.asarray(img).astype(jnp.float32) / 255.0
             x = resize_and_center_crop(x)
             x = (x - 0.5) / 0.5
+            assert x.shape == (256, 256, 3)
             processed_images.append(x)
         
         # Stack images into a single batch
@@ -230,11 +243,11 @@ def save_latents(dataset: CustomImageDataset, vae, params, config: trainConfig, 
 
 if __name__=="__main__":
     print(jax.devices())
-    gpu0 = jax.devices("cuda")[0]
-    with jax.default_device(gpu0):
-        print(f"JAX is running on: {jax.default_backend()}")
-        train, val = load_data()
-        vae, params  = get_sd_vae()
-        config = trainConfig()
-        save_latents(train, vae, params, config, output_dir="./data/train_latent")
-        save_latents(val, vae, params, config, output_dir="./data/test_latent")
+    # gpu0 = jax.devices("cuda")[0]
+    # with jax.default_device(gpu0):
+    print(f"JAX is running on: {jax.default_backend()}")
+    train, val = load_data()
+    vae, params  = get_sd_vae()
+    config = trainConfig()
+    save_latents(train, vae, params, config, output_dir="./data/train_latent")
+    save_latents(val, vae, params, config, output_dir="./data/test_latent")

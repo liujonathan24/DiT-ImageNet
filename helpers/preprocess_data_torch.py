@@ -9,16 +9,52 @@ from PIL import Image
 import collections
 
 from helpers.config import trainConfig
-from vae.import_sd_vae import get_sd_vae
+from vae.import_sd_vae_torch import get_sd_vae
 from tqdm import tqdm
 import numpy as np
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+if torch.cuda.is_available():
+    DEVICE = torch.device("cuda")
+else:
+    DEVICE = torch.device("cpu")
+torch.cuda.empty_cache()
 print(f"✅ Using device: {DEVICE}")
 
 # Data loading class (CustomImageDataset) inspired from https://www.kaggle.com/code/liucong12601/dinov2-imagenet-training
 # Heavily modified the code to become load_data & return_dataloader functions, including the use of jax dataloader instead of torch
 # The rest is my code
+
+
+def resize_and_center_crop(
+    img,
+    resize_short=256,
+    crop_size=256,
+    method="linear"
+):
+    """
+    img: JAX or NumPy array with shape (H, W, C) and dtype float32/uint8
+    returns: JAX array with shape (crop_size, crop_size, C) or (C, crop_size, crop_size)
+    """
+    x = Image.fromarray((img * 255).astype(np.uint8))
+    if x.mode != 'RGB':
+        x = x.convert('RGB')
+
+    # scale so that the shorter side == resize_short
+    short = min(x.size)
+    scale = float(resize_short) / float(short)
+    new_h = max(1, int(round(x.size[1] * scale)))
+    new_w = max(1, int(round(x.size[0] * scale)))
+
+    x_resized = torchvision.transforms.Resize((new_h, new_w)).forward(x)
+
+    # center crop crop_size x crop_size
+    top = max(0, (new_h - crop_size) // 2)
+    left = max(0, (new_w - crop_size) // 2)
+    x_cropped = x_resized.crop((left, top, left + crop_size, top + crop_size))
+    
+    return np.array(x_cropped)
 
 class CustomImageDataset(Dataset):
     def __init__(self, samples, transform=None):
@@ -31,10 +67,11 @@ class CustomImageDataset(Dataset):
     def __getitem__(self, idx):
         path, target = self.samples[idx]
         with open(path, 'rb') as f:
-            sample = np.array(Image.open(f).convert('RGB'))
-        if self.transform:
-            sample = self.transform(sample)
-        return sample, target
+            sample = Image.open(f).convert('RGB')
+            x = np.asarray(sample).astype(np.float32) / 255.0
+            x = resize_and_center_crop(x)
+            x = (x - 0.5) / 0.5
+        return x, target
 
 def load_data(number_classes=None):
     print("Loading data")
@@ -103,7 +140,7 @@ def return_dataloader(train_dataset: CustomImageDataset,
                       valid_dataset: CustomImageDataset, 
                       config: trainConfig):
     """
-    To use the jax dataloaders:
+    To use the dataloaders:
     batch = next(iter(dataloader))
     """
 
@@ -111,7 +148,7 @@ def return_dataloader(train_dataset: CustomImageDataset,
         dataset=train_dataset,
         batch_size=config.batch_size,
         shuffle=True,
-        num_workers=2,
+        num_workers=1,
         pin_memory=True
     )
 
@@ -119,44 +156,14 @@ def return_dataloader(train_dataset: CustomImageDataset,
         dataset=valid_dataset,
         batch_size=config.batch_size,
         shuffle=False,
-        num_workers=2,
+        num_workers=1,
         pin_memory=True
     )
     steps_per_epoch = len(train_loader)
     print(f"DataLoaders for created successfully.")
     print(f"{steps_per_epoch=}, val_steps: {len(valid_loader)}")
 
-def resize_and_center_crop(
-    img,
-    resize_short=256,
-    crop_size=256,
-    method="linear"
-):
-    """
-    img: JAX or NumPy array with shape (H, W, C) and dtype float32/uint8
-    returns: JAX array with shape (crop_size, crop_size, C) or (C, crop_size, crop_size)
-    """
-    x = np.asarray(img)
-    if x.ndim != 3:
-        raise ValueError(f"Expected HWC image, got shape {x.shape}")
-    H, W, C = x.shape
-
-    # scale so that the shorter side == resize_short
-    short = min(H, W)
-    scale = float(resize_short) / float(short)
-    new_h = max(1, int(round(H * scale)))
-    new_w = max(1, int(round(W * scale)))
-
-    x_resized = torchvision.transforms.Resize((new_h, new_w, C)).forward(x)
-
-    # center crop crop_size x crop_size
-    top = max(0, (new_h - crop_size) // 2)
-    left = max(0, (new_w - crop_size) // 2)
-    x_cropped = x_resized[top:top + crop_size, left:left + crop_size, :]
-    
-    return x_cropped
-
-def save_latents(dataset: CustomImageDataset, vae, params, config: trainConfig, output_dir="./data/"):
+def save_latents(dataset: CustomImageDataset, vae, config: trainConfig, output_dir="./data/"):
     """
     Given a CustomImageDataset dataset, encodes images using the VAE
     saves the stored latents and classes. Allows every image to be 
@@ -167,45 +174,31 @@ def save_latents(dataset: CustomImageDataset, vae, params, config: trainConfig, 
 
     dataloader = DataLoader(
         dataset=dataset,
-        # backend='jax',
         batch_size=config.batch_size,
         shuffle=False,
         num_workers=1,
         pin_memory=True
     )
 
-    latents = np.zeros((len(dataset), 32, 32, 4), dtype=np.float16)
+    latents = np.zeros((len(dataset), 4, 32, 32), dtype=np.float16)
     labels = []
 
     for i, batch in tqdm(enumerate(dataloader), total=len(dataloader)):
         batch_images, batch_labels = batch
-        # Ensure batch_images is a list of PIL images
-        # if not isinstance(batch_images, list):
-        #    batch_images = [Image.fromarray(img) for img in batch_images]
-
-        # Preprocess images in the batch
-        processed_images = []
-        for img in batch_images:
-            x = np.asarray(img).astype(np.float32) / 255.0
-            x = resize_and_center_crop(x)
-            x = (x - 0.5) / 0.5
-            print(x.shape)
-            assert x.shape == (1, 256, 256, 3)
-            processed_images.append(x)
         
         # Stack images into a single batch
-        batch_x = np.stack(processed_images).astype(np.float16)
-        batch_x = np.transpose(batch_x, (0, 3, 1, 2))
+        batch_x = torch.from_numpy(np.array(batch_images).astype(np.float32)).to(DEVICE)
+        batch_x = torch.permute(batch_x, (0, 3, 1, 2))
 
         # Encode image
-        distr = vae.apply({"params": params}, batch_x, method=vae.encode, deterministic=True)
-        latent = distr.latent_dist.mean
+        latent_dist = vae.encode(batch_x).latent_dist
+        latent = latent_dist.mean
 
         # Calculate start and end indices for this batch
         start_idx = i * config.batch_size
         end_idx = start_idx + latent.shape[0]
 
-        latents = latents.at[start_idx:end_idx].set(latent)
+        latents[start_idx:end_idx] = latent.detach().cpu().numpy()
         labels.extend(batch_labels)
 
     # Save latents and labels as .npy files
@@ -215,13 +208,10 @@ def save_latents(dataset: CustomImageDataset, vae, params, config: trainConfig, 
 
 
 if __name__=="__main__":
-    print(torch.cuda.is_available())
-    # gpu0 = jax.devices("cuda")[0]
-    # with jax.default_device(gpu0):
-        # print(f"JAX is running on: {jax.default_backend()}")
     train, val = load_data()
-    vae, params  = get_sd_vae()
+    vae, params = get_sd_vae()
+    vae.to(DEVICE)
     config = trainConfig()
-    save_latents(train, vae, params, config, output_dir="./data/train_latent")
-    save_latents(val, vae, params, config, output_dir="./data/test_latent")
+    save_latents(train, vae, config, output_dir="./data/train_latent")
+    save_latents(val, vae, config, output_dir="./data/test_latent")
 

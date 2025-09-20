@@ -19,7 +19,7 @@ class modelConfig:
 class trainConfig:
     def __init__(self):
         # Training details
-        self.batch_size = 64 # 256
+        self.batch_size = 8 # 256
         self.epochs = 1 # 1m
 
         self.learning_rate = 1e-4
