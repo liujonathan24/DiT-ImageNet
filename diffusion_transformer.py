@@ -123,7 +123,7 @@ class DiTFinalLayer(nnx.Module):
 class DiTPatch(nnx.Module):
     def __init__(self, config: modelConfig):
         self.config = config
-        self.patch_embeddings = nnx.Conv2d(
+        self.patch_embeddings = nnx.Conv(
             in_features=config.image_channels,         
             out_features=config.DiT_hidden_size,      
             kernel_size=(config.patch_size, config.patch_size),
