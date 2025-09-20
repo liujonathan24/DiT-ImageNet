@@ -44,7 +44,6 @@ class MHA(nnx.Module):
         out = jnp.einsum('hlm,hmd->hld', attn, v)
         return out, attn
 
-# Architecture from Vision Transformer
 class MLP(nnx.Module):
     def __init__(self, config:modelConfig):
         """
@@ -123,15 +122,22 @@ class DiTFinalLayer(nnx.Module):
 class DiTPatch(nnx.Module):
     def __init__(self, config: modelConfig):
         self.config = config
-        self.input_embeddings = MLP(config)
+        self.patch_embeddings = nnx.Conv2d(
+            in_features=config.image_channels,         
+            out_features=config.DiT_hidden_size,      
+            kernel_size=(config.patch_size, config.patch_size),
+            strides=(config.patch_size, config.patch_size),
+            padding='VALID',                           
+            rngs=config.rngs,
+        )
 
     def convert_to_patches(self, input):
         input = input.reshape((self.patch_size, self.patch_size, 4)) 
         return input
     
     def convert_to_stream(self, input):
+        input = self.patch_embeddings(input)
         input = input.reshape(-1, self.config.token_length, self.config.DiT_hidden_size)
-        input = self.input_embeddings(input)
         return input
 
 class DiffusionTransformer(nnx.Module):
