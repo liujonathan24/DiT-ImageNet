@@ -5,57 +5,16 @@ from flax import nnx
 from helpers.config import modelConfig, trainConfig
 import optax
 import argparse
-from helpers.preprocess_data_torch import load_latents
-from tqdm import tqdm
 import os
 from glob import glob
 from copy import deepcopy
 import optax
 import orbax.checkpoint as ocp
-import time
-import jax_dataloader as jdl
-import json
 import numpy as np
-import logging
-import json
-
-class JsonFormatter(logging.Formatter):
-    def format(self, record):
-        json_record = {
-            "timestamp": self.formatTime(record, self.datefmt),
-            "level": record.levelname,
-            "message": record.getMessage(),
-        }
-        return json.dumps(json_record)
-
-def setup_logging(experiment_path):
-    log_path = os.path.join(experiment_path, "training.log")
-    json_log_path = os.path.join(experiment_path, "training.json.log")
-
-    print(f"Logs will be saved to: {log_path} and {json_log_path}")
-
-    # Set up the logger
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
-
-    # Create a file handler for traditional logging
-    file_handler = logging.FileHandler(log_path)
-    file_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
-    logger.addHandler(file_handler)
-
-    # Create a file handler for JSON logging
-    json_file_handler = logging.FileHandler(json_log_path)
-    json_file_handler.setFormatter(JsonFormatter())
-    logger.addHandler(json_file_handler)
-
-    # Create a console handler
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
-    logger.addHandler(console_handler)
+from helpers.porting import restore_checkpoint, save_checkpoint
 
 
 def main(args):
-    start_time = time.time()
     if jax.devices("gpu"):
         gpu_device = jax.devices("gpu")[0]
     else:
@@ -93,44 +52,13 @@ def main(args):
     print(f"Passed initial test. Received {x.shape} shape output")
     
     for epoch in range(10):
-        state = nnx.state(deepcopy(DiTmodel))
-        extra_params = {'config': trainconfig.to_dict(), 'epoch': epoch}
-        mngr.save(
-            epoch,
-            args=ocp.args.Composite(
-                state=ocp.args.StandardSave(state),
-                extra_params=ocp.args.JsonSave(extra_params),
-            ),
-        )
-        mngr.wait_until_finished()
+        save_checkpoint(mngr, DiTmodel, optimizer, epoch, trainconfig, args)
+
+    print(f"Files in models folder after 10 epochs/10 saves.")
+    print(os.listdir(models_dir))
 
     # Restoration
-    DiTmodel = DiffusionTransformer(modelconfig)
-    status = nnx.state(DiTmodel)
-    train_state = jax.tree_util.tree_map(np.zeros_like, status)
-    create_sharded_array = lambda x: jax.device_put(x, gpu_device)
-    train_state = jax.tree_util.tree_map(create_sharded_array, train_state)
-    abstract_train_state = jax.tree_util.tree_map(
-        ocp.utils.to_shape_dtype_struct, train_state
-    )
-
-    
-    path = os.path.abspath(models_dir)
-    options = ocp.CheckpointManagerOptions(max_to_keep=3, save_interval_steps=2)
-    mngr = ocp.CheckpointManager(path, options=options)
-    obj = ocp.args.Composite(
-                state=ocp.args.StandardSave(state),
-                extra_params=ocp.args.JsonSave(extra_params),
-            )
-    restored = mngr.restore(
-        mngr.latest_step(),
-        args=ocp.args.Composite(
-            state=ocp.args.StandardRestore(abstract_train_state),
-            extra_params=ocp.args.JsonRestore(),
-        )
-    )
-    
-    state = nnx.update(DiTmodel, restored)
+    DiTmodel, extra_params = restore_checkpoint(path, modelconfig, trainconfig, gpu_device)
 
     # Test forward pass of DiTmodel:
     config = modelConfig()
@@ -141,7 +69,7 @@ def main(args):
     test_input = jnp.ones((batch, 4, 32, 32))
     #test_DiT = DiffusionTransformer(config)
     x = DiTmodel(test_input, test_timesteps)
-    print(f"Passed initial test. Received {x.shape} shape output")
+    print(f"Passed final test. Received {x.shape} shape output")
 
 
 if __name__ == "__main__":
