@@ -72,7 +72,7 @@ class DiTBlock(nnx.Module):
         Initialize a DiT block.
         """
         
-        self.config = config
+        # self.config = config
         self.LayerNorm1 = nnx.LayerNorm(config.DiT_hidden_size, rngs=config.rngs)
         self.LayerNorm2 = nnx.LayerNorm(config.DiT_hidden_size, rngs=config.rngs)
         self.MHA = MHA(config)
@@ -130,7 +130,13 @@ class DiTFinalLayer(nnx.Module):
 
 class DiTPatch(nnx.Module):
     def __init__(self, config: modelConfig):
-        self.config = config
+        # self.config = config
+        self.output_dim = config.output_dim
+        self.patch_size = config.patch_size
+        self.output_channels = config.output_channels
+        self.token_length = config.token_length
+        self.DiT_hidden_size = config.DiT_hidden_size
+        
         self.patch_embeddings = nnx.Conv(
             in_features=config.image_channels,         
             out_features=config.DiT_hidden_size,      
@@ -141,29 +147,28 @@ class DiTPatch(nnx.Module):
         )
 
     def convert_to_patches(self, input):
-        x = input.reshape((self.config.output_dim, self.config.output_dim, self.config.patch_size, self.config.patch_size, self.config.output_channels))
+        x = input.reshape((self.output_dim, self.output_dim, self.patch_size, self.patch_size, self.output_channels))
         x = jnp.einsum('hwpqc->chpwq', x)
-        imgs = x.reshape((self.config.output_channels, self.config.output_dim*self.config.patch_size, self.config.output_dim*self.config.patch_size))
+        imgs = x.reshape((self.output_channels, self.output_dim*self.patch_size, self.output_dim*self.patch_size))
         return imgs
-        # input = input.reshape((1, self.config.patch_size, self.config.patch_size, 4)) 
-        # return input
     
     def convert_to_stream(self, input):
         #print(input.shape)
         input = jnp.einsum('chw->hwc', input)
         input = self.patch_embeddings(input)
-        input = input.reshape(-1, self.config.token_length, self.config.DiT_hidden_size)
+        input = input.reshape(-1, self.token_length, self.DiT_hidden_size)
         return input
 
 #@flax.struct.dataclass
 class DiffusionTransformer(nnx.Module):
     """Diffusion Transformer"""
     def __init__(self, config: modelConfig):
-        
-        self.config = config
         self.length = config.token_length 
+        self.DiT_hidden_size = config.DiT_hidden_size
+        self.n_layers = config.n_layers
+
         self.layers = [
-                        DiTBlock(config) for _ in range(self.config.n_layers)
+                        DiTBlock(config) for _ in range(self.n_layers)
                       ]
         self.final_layer = DiTFinalLayer(config)
         self.mapper = DiTPatch(config)
@@ -174,12 +179,12 @@ class DiffusionTransformer(nnx.Module):
     def pos_embed(self):
         # Implements: pos / 10000^(2i/d_model)
         # Implementation from https://medium.com/thedeephub/positional-encoding-explained-a-deep-dive-into-transformer-pe-65cfe8cfe10b  
-        position = jnp.arange(self.config.token_length)[:, jnp.newaxis]
+        position = jnp.arange(self.length)[:, jnp.newaxis]
         # The original formula pos / 10000^(2i/d_model) is equivalent to pos * (1 / 10000^(2i/d_model)).
         # I use the below version for numerical stability
-        div_term = jnp.exp(jnp.arange(0, self.config.DiT_hidden_size, 2) * -(jnp.log(10000.0) / self.config.DiT_hidden_size))
+        div_term = jnp.exp(jnp.arange(0, self.DiT_hidden_size, 2) * -(jnp.log(10000.0) / self.DiT_hidden_size))
         
-        pe = jnp.zeros((self.config.token_length, self.config.DiT_hidden_size))
+        pe = jnp.zeros((self.length, self.DiT_hidden_size))
         pe.at[:, 0::2].set(jnp.sin(position * div_term))
         pe.at[:, 1::2].set(jnp.cos(position * div_term))
         
@@ -195,13 +200,13 @@ class DiffusionTransformer(nnx.Module):
         :param max_period: controls the minimum frequency of the embeddings.
         :return: an (N, D) Tensor of positional embeddings.
         """
-        half = self.config.DiT_hidden_size // 2
+        half = self.DiT_hidden_size // 2
         freqs = jnp.exp(
             -jnp.log(max_period) * jnp.arange(start=0, stop=half, dtype=jnp.float32) / half
         )
         args = jnp.float32(t[None]) * freqs[None]
         embedding = jnp.concatenate([jnp.cos(args), jnp.sin(args)], axis=-1)
-        if self.config.DiT_hidden_size % 2:
+        if self.DiT_hidden_size % 2:
             embedding = jnp.cat([embedding, jnp.zeros_like(embedding[:1])], dim=-1)
         return embedding
 
