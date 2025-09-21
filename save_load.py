@@ -129,7 +129,10 @@ def main(args):
             )
     restored = mngr.restore(
         mngr.latest_step(),
-        args=obj# ocp.args.StandardRestore(abstract_train_state),
+        args=ocp.args.Composite(
+            state=ocp.args.StandardRestore(abstract_train_state),
+            extra_params=ocp.args.JsonRestore(),
+        )
     )
     
     state = nnx.update(DiTmodel, restored)
