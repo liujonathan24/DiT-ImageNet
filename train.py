@@ -108,6 +108,10 @@ def main(args):
     DiTmodel = DiffusionTransformer(modelconfig)
     opt = optax.adamw(learning_rate=1e-3)
     optimizer = nnx.Optimizer(DiTmodel, opt, wrt=nnx.Param)
+    
+    # Log shape of the model
+    logging.info(jax.tree.map(lambda x: str(type(x)), nnx.split(DiTmodel)[1]))  # Initial state
+
 
     diffusion = Diffusion(trainconfig.linear_variance_min, trainconfig.linear_variance_max, trainconfig.tmax)
 
@@ -141,6 +145,7 @@ def main(args):
                 avg_loss = running_loss / trainconfig.log_frequency
                 logging.info(f"Epoch {epoch} | Step {i+1} | Loss: {avg_loss:.4f}")
                 running_loss = 0.0
+                break
         epoch_time = time.time() - epoch_start_time
         logging.info(f"Epoch {epoch} finished in {epoch_time:.2f} seconds")
         if epoch % trainconfig.ckpt_frequency == 0:

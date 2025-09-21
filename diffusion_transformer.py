@@ -13,11 +13,11 @@ class MHA(nnx.Module):
         self.length = config.token_length
         self.hidden = config.DiT_hidden_size
         self.num_heads = config.n_heads
-        self.rngs = config.rngs
+        
 
         self.d_head = self.hidden // self.num_heads
-        self.qkv_proj = nnx.Linear(self.hidden, 3 * self.hidden, rngs=self.rngs)
-        self.out_proj = nnx.Linear(self.hidden, self.hidden, rngs=self.rngs)
+        self.qkv_proj = nnx.Linear(self.hidden, 3 * self.hidden, rngs=config.rngs)
+        self.out_proj = nnx.Linear(self.hidden, self.hidden, rngs=config.rngs)
 
     def __call__(self, x):
         return self.forward(x)
@@ -167,9 +167,11 @@ class DiffusionTransformer(nnx.Module):
         self.DiT_hidden_size = config.DiT_hidden_size
         self.n_layers = config.n_layers
 
-        self.layers = [
-                        DiTBlock(config) for _ in range(self.n_layers)
-                      ]
+        # self.layers = nnx.Sequential([DiTBlock(config) for _ in range(self.n_layers)])
+        # print(flax.__version__)
+        self.layers = nnx.List([
+                 DiTBlock(config) for i in range(self.n_layers)
+                 ])
         self.final_layer = DiTFinalLayer(config)
         self.mapper = DiTPatch(config)
         self.time_MLP = MLP(config)
@@ -226,8 +228,9 @@ class DiffusionTransformer(nnx.Module):
         conditioning = self.time_MLP(self.time_embed(timestep)) # Embeds single timestep to [hidden_dim]
         # print(f"Post conditioning: {conditioning.shape}")
 
-        for layer in self.layers:
-            x = layer.forward(x, conditioning)
+        # x = self.layers(x, conditioning)
+        for layer in range(self.n_layers):
+            x = self.layers[layer].forward(x, conditioning)
             # print(f"Post layer: {x.shape}")
         x = self.final_layer(x, conditioning)
         # print(f"Shape after final layer: {x.shape}")
