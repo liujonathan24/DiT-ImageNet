@@ -88,27 +88,25 @@ def main(args):
     log_steps = 0
     running_loss = 0
     start_time = time.time()
+    random_key = jax.random.PRNGKey(0)
+
     for epoch in range(trainconfig.epochs):
         print(f"Starting epoch {epoch}.")
-        for batch, labels in tqdm(train_latents): # maybe convert to dataloader again?
+        for i, batch, labels in enumerate(tqdm(train_latents)): # maybe convert to dataloader again?
             
 
-            t = jax.random.randint(jax.random.PRNGKey(0), (batch.shape[0],), 0, 1000)
+            t = jax.random.randint(random_key, (batch.shape[0],), 0, 1000)
 
             # noise = 
             alpha_bar_t = diffusion.get_alpha_bar(t)[:, None, None, None]
             noise = jnp.sqrt(1-alpha_bar_t) * jax.random.normal(key=jax.random.PRNGKey(0), shape=batch.shape)
-
-            batch *= 18215 * jnp.sqrt(alpha_bar_t)
-
-            batch += noise
             
-            jax.device_put(batch, device=gpu_device)
-            # print(batch.shape)
-            jax.device_put(t, device=gpu_device)
-            jax.device_put(noise, device=gpu_device)
+            batch *= .18215 
+            noisy_batch = batch * jnp.sqrt(alpha_bar_t) + noise
 
-            loss = train_step(DiTmodel, optimizer, batch, t, noise)
+            loss = train_step(DiTmodel, optimizer, noisy_batch, t, noise)
+            if i % 100 == 0:
+                running_loss = loss
         print(f"loss on epoch {epoch} is {loss}")
         if epoch % trainconfig.ckpt_frequency == 0:
             # Bundle states into checkpoint and save for later EMA.
