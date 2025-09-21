@@ -86,10 +86,11 @@ class DiTBlock(nnx.Module):
         # return vmap(func, in_axes=(0, 0), out_axes=0)(x, conditioning)
 
     def forward(self, x, conditioning):
-        print(x.shape, conditioning.shape)
-        # assert 1 == 2
+        print(f"Forward of DiTBlock: {x.shape, conditioning.shape}")
         gamma1, beta1, alpha1, gamma2, beta2, alpha2 = self.cLinWeights(conditioning).reshape((6, -1))
         tmp = self.LayerNorm1(x)
+        print(gamma1.shape)
+        print(tmp.shape)
         tmp = gamma1*tmp + beta1 
         tmp, attn = self.MHA(tmp)
         tmp = alpha1*tmp
@@ -110,15 +111,20 @@ class DiTFinalLayer(nnx.Module):
     def __init__(self, config: modelConfig):
         
         self.LayerNorm = nnx.LayerNorm(config.DiT_hidden_size, rngs=config.rngs)
-        self.linear = nnx.Linear(config.DiT_hidden_size, config.patch_size**2*4, rngs=config.rngs) 
+        self.linear = nnx.Linear(config.DiT_hidden_size, config.patch_size**2*config.output_dim, rngs=config.rngs) 
         self.linWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size*2, rngs=config.rngs)
 
     def forward(self, x, conditioning):
         x = self.LayerNorm(x)
-        alpha, beta = self.linWeights(conditioning).value
+        alpha, beta = self.linWeights(conditioning).reshape(2, -1)
+        print(alpha.shape, beta.shape)
         x = alpha * x + beta
         x = self.linear(x)
+        print(f"Shape of final layer: {x.shape}")
         return x
+
+    def __call__(self, x, conditioning):
+        return self.forward(x, conditioning)
 
 class DiTPatch(nnx.Module):
     def __init__(self, config: modelConfig):
@@ -133,10 +139,15 @@ class DiTPatch(nnx.Module):
         )
 
     def convert_to_patches(self, input):
-        input = input.reshape((self.patch_size, self.patch_size, 4)) 
-        return input
+        x = input.reshape((self.config.output_dim, self.config.output_dim, self.config.patch_size, self.config.patch_size, self.config.output_channels))
+        x = jnp.einsum('hwpqc->chpwq', x)
+        imgs = x.reshape((self.config.output_channels, self.config.output_dim*self.config.patch_size, self.config.output_dim*self.config.patch_size))
+        return imgs
+        # input = input.reshape((1, self.config.patch_size, self.config.patch_size, 4)) 
+        # return input
     
     def convert_to_stream(self, input):
+        input = jnp.einsum('chw->hwc', input)
         input = self.patch_embeddings(input)
         input = input.reshape(-1, self.config.token_length, self.config.DiT_hidden_size)
         return input
@@ -184,10 +195,10 @@ class DiffusionTransformer(nnx.Module):
         freqs = jnp.exp(
             -jnp.log(max_period) * jnp.arange(start=0, stop=half, dtype=jnp.float32) / half
         )
-        args = jnp.float32(t[:, None]) * freqs[None]
+        args = jnp.float32(t[None]) * freqs[None]
         embedding = jnp.concatenate([jnp.cos(args), jnp.sin(args)], axis=-1)
         if self.config.DiT_hidden_size % 2:
-            embedding = jnp.cat([embedding, jnp.zeros_like(embedding[:, :1])], dim=-1)
+            embedding = jnp.cat([embedding, jnp.zeros_like(embedding[:1])], dim=-1)
         return embedding
 
     def forward(self, x, timestep):
@@ -198,7 +209,7 @@ class DiffusionTransformer(nnx.Module):
         y: (N,) tensor of class labels
         """
         print(f"Forward shapes: {x.shape, timestep.shape}")
-        x = self.mapper.convert_to_stream(x) # Convert [32, 32, 4] to [32*32*4] & applies MLP
+        x = self.mapper.convert_to_stream(x) # Convert [4, 32, 32] to [4*32*32] & applies MLP
         print(f"Shape after stream: {x.shape}")
         x = x + self.pos_embed # Adds sinusoidal PE
         print(f"After pos embed: {x.shape}")
@@ -208,13 +219,17 @@ class DiffusionTransformer(nnx.Module):
 
         for layer in self.layers:
             x = layer.forward(x, conditioning)
-            print("Post layer: {x.shape}")
-        x = self.final_layer(x)
-        return self.mapper.convert_to_patches(x)
+            print(f"Post layer: {x.shape}")
+        x = self.final_layer(x, conditioning)
+        print(f"Shape after final layer: {x.shape}")
+        x = self.mapper.convert_to_patches(x)
+        print(f"Shape after conversion to patches: {x.shape}")
+        return x
             
 
     def __call__(self, x, conditioning): 
         """Uses vmap to process batched inputs."""
+        print(f"Calling shapes: {x.shape, conditioning.shape}")
         func = lambda x, conditioning: self.forward(x, conditioning)
         return vmap(func, in_axes=(0, 0), out_axes=0)(x, conditioning)
         # return self.forward(x, conditioning)
@@ -247,11 +262,11 @@ if __name__=="__main__":
     test_condit = jnp.ones((batch, config.DiT_hidden_size))
     test_timesteps = jnp.ones(batch)
 
-    test_DiTBlock = DiTBlock(config)
-    x = test_DiTBlock(test_input, test_condit)
+    # test_DiTBlock = DiTBlock(config)
+    # x = test_DiTBlock(test_input, test_condit)
     # print(test_input.shape, x.shape)
     
-    test_input = jnp.ones((batch, 32, 32, 4))
+    test_input = jnp.ones((batch, 4, 32, 32))
     test_DiT = DiffusionTransformer(config)
     x = test_DiT(test_input, test_timesteps)
     print(x.shape)
