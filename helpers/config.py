@@ -9,6 +9,10 @@ class modelConfig:
         self.image_channels = 4
         self.patch_size = 8
 
+        # output details
+        self.output_dim = 4
+        self.output_channels = 4
+
         # Architecture details
         self.n_layers = 12
         self.n_heads = 6
