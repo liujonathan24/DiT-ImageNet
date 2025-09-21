@@ -113,16 +113,6 @@ def main(args):
 
     train_latents = jdl.ArrayDataset(train_latents, train_labels)
     train_latents = jdl.DataLoader(
-            train_latents, # Can be a jdl.Dataset or pytorch or huggingface or tensorflow dataset
-        backend='jax', # Use 'jax' backend for loading data
-        batch_size= trainconfig.batch_size, # Batch size
-        shuffle=True, # Shuffle the dataloader every iteration or not
-        drop_last=False, # Drop the last batch or not
-
-    )
-
-
-    train_latents = jdl.DataLoader(
         train_latents, 
         backend='jax', 
         batch_size=trainconfig.batch_size, 
