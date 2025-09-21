@@ -3,6 +3,8 @@ import jax.numpy as jnp
 from jax import grad, vmap
 from flax import nnx
 from helpers.config import modelConfig
+import flax
+
         
 
 class MHA(nnx.Module):
@@ -86,11 +88,11 @@ class DiTBlock(nnx.Module):
         # return vmap(func, in_axes=(0, 0), out_axes=0)(x, conditioning)
 
     def forward(self, x, conditioning):
-        print(f"Forward of DiTBlock: {x.shape, conditioning.shape}")
+        # print(f"Forward of DiTBlock: {x.shape, conditioning.shape}")
         gamma1, beta1, alpha1, gamma2, beta2, alpha2 = self.cLinWeights(conditioning).reshape((6, -1))
         tmp = self.LayerNorm1(x)
-        print(gamma1.shape)
-        print(tmp.shape)
+        # print(gamma1.shape)
+        # print(tmp.shape)
         tmp = gamma1*tmp + beta1 
         tmp, attn = self.MHA(tmp)
         tmp = alpha1*tmp
@@ -117,10 +119,10 @@ class DiTFinalLayer(nnx.Module):
     def forward(self, x, conditioning):
         x = self.LayerNorm(x)
         alpha, beta = self.linWeights(conditioning).reshape(2, -1)
-        print(alpha.shape, beta.shape)
+        # print(alpha.shape, beta.shape)
         x = alpha * x + beta
         x = self.linear(x)
-        print(f"Shape of final layer: {x.shape}")
+        # print(f"Shape of final layer: {x.shape}")
         return x
 
     def __call__(self, x, conditioning):
@@ -152,6 +154,7 @@ class DiTPatch(nnx.Module):
         input = input.reshape(-1, self.config.token_length, self.config.DiT_hidden_size)
         return input
 
+@flax.struct.dataclass
 class DiffusionTransformer(nnx.Module):
     """Diffusion Transformer"""
     def __init__(self, config: modelConfig):
@@ -208,28 +211,28 @@ class DiffusionTransformer(nnx.Module):
         t: (N,) tensor of diffusion timesteps
         y: (N,) tensor of class labels
         """
-        print(f"Forward shapes: {x.shape, timestep.shape}")
+        # print(f"Forward shapes: {x.shape, timestep.shape}")
         x = self.mapper.convert_to_stream(x) # Convert [4, 32, 32] to [4*32*32] & applies MLP
-        print(f"Shape after stream: {x.shape}")
+        # print(f"Shape after stream: {x.shape}")
         x = x + self.pos_embed # Adds sinusoidal PE
-        print(f"After pos embed: {x.shape}")
+        # print(f"After pos embed: {x.shape}")
         
         conditioning = self.time_MLP(self.time_embed(timestep)) # Embeds single timestep to [hidden_dim]
-        print(f"Post conditioning: {conditioning.shape}")
+        # print(f"Post conditioning: {conditioning.shape}")
 
         for layer in self.layers:
             x = layer.forward(x, conditioning)
-            print(f"Post layer: {x.shape}")
+            # print(f"Post layer: {x.shape}")
         x = self.final_layer(x, conditioning)
-        print(f"Shape after final layer: {x.shape}")
+        # print(f"Shape after final layer: {x.shape}")
         x = self.mapper.convert_to_patches(x)
-        print(f"Shape after conversion to patches: {x.shape}")
+        # print(f"Shape after conversion to patches: {x.shape}")
         return x
             
 
     def __call__(self, x, conditioning): 
         """Uses vmap to process batched inputs."""
-        print(f"Calling shapes: {x.shape, conditioning.shape}")
+        # print(f"Calling shapes: {x.shape, conditioning.shape}")
         func = lambda x, conditioning: self.forward(x, conditioning)
         return vmap(func, in_axes=(0, 0), out_axes=0)(x, conditioning)
         # return self.forward(x, conditioning)
@@ -261,10 +264,6 @@ if __name__=="__main__":
     test_input = jnp.ones((batch, config.token_length, config.DiT_hidden_size))
     test_condit = jnp.ones((batch, config.DiT_hidden_size))
     test_timesteps = jnp.ones(batch)
-
-    # test_DiTBlock = DiTBlock(config)
-    # x = test_DiTBlock(test_input, test_condit)
-    # print(test_input.shape, x.shape)
     
     test_input = jnp.ones((batch, 4, 32, 32))
     test_DiT = DiffusionTransformer(config)
