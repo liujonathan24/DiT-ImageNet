@@ -6,7 +6,7 @@ certifi==2025.8.3
 charset-normalizer==3.4.3
 chex==0.1.91
 diffusers==0.35.1
--e git+https://github.com/liujonathan24/DiT-ImageNet.git@df4282321a9cbd2420ea93a56768e6b045faedee#egg=DiT_ImageNet
+-e git+https://github.com/liujonathan24/DiT-ImageNet.git@94cded275d511add30e2e6c7062c5b71cc25429b#egg=DiT_ImageNet
 etils==1.13.0
 filelock==3.19.1
 flax==0.11.2
