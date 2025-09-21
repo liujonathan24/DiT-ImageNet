@@ -54,7 +54,7 @@ def main(args):
     for epoch in range(10):
         save_checkpoint(mngr, DiTmodel, optimizer, epoch, trainconfig, args)
 
-    print(f"Files in models folder after 10 epochs/10 saves.")
+    print(f"Files in {models_dir} folder after 10 epochs/10 saves.")
     print(os.listdir(models_dir))
 
     # Restoration

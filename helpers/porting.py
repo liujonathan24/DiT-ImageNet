@@ -35,7 +35,7 @@ def restore_checkpoint(model_path, modelconfig: modelConfig, trainconfig: trainC
     mngr = ocp.CheckpointManager(path, options=options)
     extra_params = {'config': trainconfig.to_dict(), 'epoch': 0}
     obj = ocp.args.Composite(
-                state=ocp.args.StandardSave(state),
+                state=ocp.args.StandardSave(status),
                 extra_params=ocp.args.JsonSave(extra_params),
             )
     restored = mngr.restore(
