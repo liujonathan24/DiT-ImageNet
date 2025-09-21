@@ -112,7 +112,6 @@ def main(args):
         mngr.wait_until_finished()
 
     # Restoration
-
     train_state = jax.tree_util.tree_map(np.zeros_like, state)
     create_sharded_array = lambda x: jax.device_put(x, gpu_device)
     train_state = jax.tree_util.tree_map(create_sharded_array, train_state)
@@ -121,7 +120,7 @@ def main(args):
     )
 
     
-    path = models_dir
+    path = os.path.abspath(models_dir)
     options = ocp.CheckpointManagerOptions(max_to_keep=3, save_interval_steps=2)
     mngr = ocp.CheckpointManager(path, options=options)
     obj = ocp.args.Composite(
@@ -130,12 +129,7 @@ def main(args):
             )
     restored = mngr.restore(
         mngr.latest_step(),
-        args=obj #ocp.args.Composite(
-                #state=ocp.args.StandardSave(state),
-               # extra_params=ocp.args.JsonSave(extra_params),
-            #)
-
-        #ocp.args.StandardRestore(abstract_train_state),
+        args=obj# ocp.args.StandardRestore(abstract_train_state),
     )
     
     state = nnx.update(DiTmodel, restored)
