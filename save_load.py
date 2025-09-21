@@ -7,7 +7,6 @@ import optax
 import argparse
 import os
 from glob import glob
-from copy import deepcopy
 import optax
 import orbax.checkpoint as ocp
 import numpy as np
@@ -59,15 +58,14 @@ def main(args):
 
     # Restoration
     DiTmodel, extra_params = restore_checkpoint(path, modelconfig, trainconfig, gpu_device)
-
+    print(f"Extra params are: {extra_params}")
     # Test forward pass of DiTmodel:
     config = modelConfig()
     batch = 8
     test_input = jnp.ones((batch, config.token_length, config.DiT_hidden_size))
-    test_condit = jnp.ones((batch, config.DiT_hidden_size))
     test_timesteps = jnp.ones(batch)
     test_input = jnp.ones((batch, 4, 32, 32))
-    #test_DiT = DiffusionTransformer(config)
+
     x = DiTmodel(test_input, test_timesteps)
     print(f"Passed final test. Received {x.shape} shape output")
 

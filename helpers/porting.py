@@ -40,15 +40,8 @@ def restore_checkpoint(model_path, modelconfig: modelConfig, trainconfig: trainC
             )
     restored = mngr.restore(
         mngr.latest_step(),
-        args=ocp.args.Composite(
-            state=ocp.args.StandardRestore(abstract_train_state),
-            extra_params=ocp.args.JsonRestore(),
-        )
+        args=obj
     )
     
     state = nnx.update(DiTmodel, restored['state'])
     return DiTmodel, restored['extra_params']
-    
-
-    nnx.update(model, restored['state'])
-    return restored['extra_params']
