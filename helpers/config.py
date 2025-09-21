@@ -42,7 +42,7 @@ class trainConfig:
     def __init__(self):
         # Training details
         self.batch_size = 12 # 256
-        self.epochs = 32 # 1m
+        self.epochs = 50 # 1m
 
         self.learning_rate = 1e-4
         self.ema = 0.9999

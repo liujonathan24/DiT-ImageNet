@@ -108,7 +108,8 @@ def main(args):
             jax.device_put(t, device=gpu_device)
             jax.device_put(noise, device=gpu_device)
 
-            train_step(DiTmodel, optimizer, batch, t, noise)
+            loss = train_step(DiTmodel, optimizer, batch, t, noise)
+        print(f"loss on epoch {epoch} is {loss}")
         if epoch % trainconfig.ckpt_frequency == 0:
             # Bundle states into checkpoint and save for later EMA.
             model_state = nnx.state(deepcopy(DiTmodel))
@@ -116,7 +117,7 @@ def main(args):
             checkpointer = ocp.StandardCheckpointer()
             checkpointer.save(os.path.abspath(os.path.join(models_dir, f'ckpt_{epoch}')), ckpt)
             checkpointer.wait_until_finished()
-
+        
             # Save args separately as JSON
             args_path = os.path.join(models_dir, f'ckpt_{epoch}_args.json')
             with open(args_path, 'w') as f:
