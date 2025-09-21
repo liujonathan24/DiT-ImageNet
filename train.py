@@ -92,7 +92,7 @@ def main(args):
 
     for epoch in range(trainconfig.epochs):
         print(f"Starting epoch {epoch}.")
-        for i, batch, labels in enumerate(tqdm(train_latents)): # maybe convert to dataloader again?
+        for i, (batch, labels) in enumerate(tqdm(train_latents)): # maybe convert to dataloader again?
             
 
             t = jax.random.randint(random_key, (batch.shape[0],), 0, 1000)
@@ -107,6 +107,7 @@ def main(args):
             loss = train_step(DiTmodel, optimizer, noisy_batch, t, noise)
             if i % 100 == 0:
                 running_loss = loss
+                print(f"running loss is {loss}")
         print(f"loss on epoch {epoch} is {loss}")
         if epoch % trainconfig.ckpt_frequency == 0:
             # Bundle states into checkpoint and save for later EMA.
