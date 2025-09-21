@@ -52,6 +52,7 @@ class trainConfig:
         self.linear_variance_max = 2e-2
 
         self.ckpt_frequency = 5
+        self.log_frequency = 1000
     
     def to_dict(self):
         return {
@@ -63,4 +64,5 @@ class trainConfig:
             "linear_variance_min": self.linear_variance_min,
             "linear_variance_max": self.linear_variance_max,
             "ckpt_frequency": self.ckpt_frequency,
+            "log_frequency": self.log_frequency
         }

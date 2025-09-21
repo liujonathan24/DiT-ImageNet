@@ -42,7 +42,47 @@ def train_step(model, optimizer, x, t, y):
 
   return loss
 
+
+import logging
+import json
+
+class JsonFormatter(logging.Formatter):
+    def format(self, record):
+        json_record = {
+            "timestamp": self.formatTime(record, self.datefmt),
+            "level": record.levelname,
+            "message": record.getMessage(),
+        }
+        return json.dumps(json_record)
+
+def setup_logging(experiment_path):
+    log_path = os.path.join(experiment_path, "training.log")
+    json_log_path = os.path.join(experiment_path, "training.json.log")
+
+    print(f"Logs will be saved to: {log_path} and {json_log_path}")
+
+    # Set up the logger
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+
+    # Create a file handler for traditional logging
+    file_handler = logging.FileHandler(log_path)
+    file_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
+    logger.addHandler(file_handler)
+
+    # Create a file handler for JSON logging
+    json_file_handler = logging.FileHandler(json_log_path)
+    json_file_handler.setFormatter(JsonFormatter())
+    logger.addHandler(json_file_handler)
+
+    # Create a console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
+    logger.addHandler(console_handler)
+
+
 def main(args):
+    start_time = time.time()
     if jax.devices("gpu"):
         gpu_device = jax.devices("gpu")[0]
     else:
@@ -56,14 +96,12 @@ def main(args):
     models_dir = os.path.join(experiment_path, "models")
     os.makedirs(experiment_path)
 
-
+    # Set up logging and log initial experiment information.
+    setup_logging(experiment_path)
+    logging.info(f"Starting experiment v{experiment_number}")
+    logging.info(f"Arguments: {args}")
     train_latents, train_labels = load_latents("./data/train_latent")
-    print(type(train_latents))
-    print(train_latents.shape)
-
-
-
-    test_latents, test_labels = load_latents("./data/test_latent")
+    logging.info(f"Training latents shape: {train_latents.shape}")
 
     trainconfig = trainConfig()
     modelconfig = modelConfig()
@@ -84,20 +122,23 @@ def main(args):
     )
 
 
+    train_latents = jdl.DataLoader(
+        train_latents, 
+        backend='jax', 
+        batch_size=trainconfig.batch_size, 
+        shuffle=True,
+        drop_last=False,
+    )
     train_steps = 0
-    log_steps = 0
-    running_loss = 0
-    start_time = time.time()
     random_key = jax.random.PRNGKey(0)
-
     for epoch in range(trainconfig.epochs):
-        print(f"Starting epoch {epoch}.")
+        logging.info(f"Starting epoch {epoch}")
+        epoch_start_time = time.time()
+        running_loss = 0.0
         for i, (batch, labels) in enumerate(tqdm(train_latents)): # maybe convert to dataloader again?
-            
 
             t = jax.random.randint(random_key, (batch.shape[0],), 0, 1000)
 
-            # noise = 
             alpha_bar_t = diffusion.get_alpha_bar(t)[:, None, None, None]
             noise = jnp.sqrt(1-alpha_bar_t) * jax.random.normal(key=jax.random.PRNGKey(0), shape=batch.shape)
             
@@ -105,10 +146,13 @@ def main(args):
             noisy_batch = batch * jnp.sqrt(alpha_bar_t) + noise
 
             loss = train_step(DiTmodel, optimizer, noisy_batch, t, noise)
-            if i % 100 == 0:
-                running_loss = loss
-                print(f"running loss is {loss}")
-        print(f"loss on epoch {epoch} is {loss}")
+            running_loss += loss.item()
+            if (i + 1) % trainconfig.log_frequency == 0:
+                avg_loss = running_loss / trainconfig.log_frequency
+                logging.info(f"Epoch {epoch} | Step {i+1} | Loss: {avg_loss:.4f}")
+                running_loss = 0.0
+        epoch_time = time.time() - epoch_start_time
+        logging.info(f"Epoch {epoch} finished in {epoch_time:.2f} seconds")
         if epoch % trainconfig.ckpt_frequency == 0:
             # Bundle states into checkpoint and save for later EMA.
             model_state = nnx.state(deepcopy(DiTmodel))
@@ -121,6 +165,8 @@ def main(args):
             args_path = os.path.join(models_dir, f'ckpt_{epoch}_args.json')
             with open(args_path, 'w') as f:
                 json.dump(vars(args), f)
+
+        logging.info(f"Training completed in {time.time() - start_time} seconds.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
