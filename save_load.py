@@ -92,13 +92,6 @@ def main(args):
     x = DiTmodel(test_input, test_timesteps)
     print(f"Passed initial test. Received {x.shape} shape output")
     
-
-    # Bundle states into checkpoint and save for later EMA.
-    # model_state = nnx.state(deepcopy(DiTmodel))
-    # ckpt = {'model': model_state, 'config': trainconfig.to_dict(), 'epoch': epoch} #, "args": vars(args)}
-    # checkpointer = ocp.StandardCheckpointer()
-    # checkpointer.save(os.path.abspath(os.path.join(models_dir, f'ckpt_{epoch}')), ckpt)
-    # checkpointer.wait_until_finished()
     for epoch in range(10):
         state = nnx.state(deepcopy(DiTmodel))
         extra_params = {'config': trainconfig.to_dict(), 'epoch': epoch}
@@ -112,7 +105,9 @@ def main(args):
         mngr.wait_until_finished()
 
     # Restoration
-    train_state = jax.tree_util.tree_map(np.zeros_like, state)
+    DiTmodel = DiffusionTransformer(modelconfig)
+    status = nnx.state(DiTmodel)
+    train_state = jax.tree_util.tree_map(np.zeros_like, status)
     create_sharded_array = lambda x: jax.device_put(x, gpu_device)
     train_state = jax.tree_util.tree_map(create_sharded_array, train_state)
     abstract_train_state = jax.tree_util.tree_map(
