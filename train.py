@@ -81,6 +81,8 @@ def setup_logging(experiment_path):
     logger.addHandler(console_handler)
 
 
+from helpers.porting import save_checkpoint, restore_checkpoint
+
 def main(args):
     start_time = time.time()
     if jax.devices("gpu"):
@@ -90,16 +92,21 @@ def main(args):
     assert gpu_device != None
     assert args.model_config == "DiT-S", "Currently, the only model config implemented is DiT-S."
 
-    os.makedirs(args.results_dir, exist_ok=True)
-    experiment_number = len(glob(f"{args.results_dir}/*"))
-    experiment_path = os.path.join(args.results_dir, f"experiment-v{experiment_number}")
-    models_dir = os.path.join(experiment_path, "models")
-    os.makedirs(experiment_path)
+    if args.resume:
+        experiment_path = args.resume
+        models_dir = os.path.join(experiment_path, "models")
+    else:
+        os.makedirs(args.results_dir, exist_ok=True)
+        experiment_number = len(glob(f"{args.results_dir}/*"))
+        experiment_path = os.path.join(args.results_dir, f"experiment-v{experiment_number}")
+        models_dir = os.path.join(experiment_path, "models")
+        os.makedirs(models_dir)
 
     # Set up logging and log initial experiment information.
     setup_logging(experiment_path)
-    logging.info(f"Starting experiment v{experiment_number}")
+    logging.info(f"Starting experiment at {experiment_path}")
     logging.info(f"Arguments: {args}")
+
     train_latents, train_labels = load_latents("./data/train_latent")
     logging.info(f"Training latents shape: {train_latents.shape}")
 
@@ -108,10 +115,19 @@ def main(args):
     DiTmodel = DiffusionTransformer(modelconfig)
     opt = optax.adamw(learning_rate=1e-3)
     optimizer = nnx.Optimizer(DiTmodel, opt, wrt=nnx.Param)
-    
+
+    options = ocp.CheckpointManagerOptions(max_to_keep=3, save_interval_steps=2)
+    mngr = ocp.CheckpointManager(models_dir, options=options)
+
+    if args.resume:
+        extra_params = restore_checkpoint(mngr, DiTmodel)
+        start_epoch = extra_params['epoch'] + 1
+        logging.info(f"Resuming training from epoch {start_epoch}")
+    else:
+        start_epoch = 0
+
     # Log shape of the model
     logging.info(jax.tree.map(lambda x: str(type(x)), nnx.split(DiTmodel)[1]))  # Initial state
-
 
     diffusion = Diffusion(trainconfig.linear_variance_min, trainconfig.linear_variance_max, trainconfig.tmax)
 
@@ -125,11 +141,11 @@ def main(args):
     )
     train_steps = 0
     random_key = jax.random.PRNGKey(0)
-    for epoch in range(trainconfig.epochs):
+    for epoch in range(start_epoch, trainconfig.epochs):
         logging.info(f"Starting epoch {epoch}")
         epoch_start_time = time.time()
         running_loss = 0.0
-        for i, (batch, labels) in enumerate(tqdm(train_latents)): # maybe convert to dataloader again?
+        for i, (batch, labels) in enumerate(tqdm(train_latents)):
 
             t = jax.random.randint(random_key, (batch.shape[0],), 0, 1000)
 
@@ -149,17 +165,7 @@ def main(args):
         epoch_time = time.time() - epoch_start_time
         logging.info(f"Epoch {epoch} finished in {epoch_time:.2f} seconds")
         if epoch % trainconfig.ckpt_frequency == 0:
-            # Bundle states into checkpoint and save for later EMA.
-            model_state = nnx.state(deepcopy(DiTmodel))
-            ckpt = {'model': model_state, 'config': trainconfig.to_dict(), 'epoch': epoch} #, "args": vars(args)}
-            checkpointer = ocp.StandardCheckpointer()
-            checkpointer.save(os.path.abspath(os.path.join(models_dir, f'ckpt_{epoch}')), ckpt)
-            checkpointer.wait_until_finished()
-        
-            # Save args separately as JSON
-            args_path = os.path.join(models_dir, f'ckpt_{epoch}_args.json')
-            with open(args_path, 'w') as f:
-                json.dump(vars(args), f)
+            save_checkpoint(mngr, DiTmodel, optimizer, epoch, trainconfig, args)
 
         logging.info(f"Training completed in {time.time() - start_time} seconds.")
 
@@ -168,6 +174,7 @@ if __name__ == "__main__":
     parser.add_argument("--model_config", "-m", default="DiT-S", help="The name of the model configurations")
     parser.add_argument("--data_directory", "-d", default="./data/", help="Directory to load ImageNet-100k from.")
     parser.add_argument("--results_dir", "-r", default="./results", help="Directory to save results to.")
+    parser.add_argument("--resume", "-re", help="Path to the experiment directory to resume training from.")
     
     args = parser.parse_args()
     main(args)
