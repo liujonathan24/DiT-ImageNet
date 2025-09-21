@@ -13,9 +13,9 @@ from copy import deepcopy
 import optax
 import orbax.checkpoint as ocp
 import time
+import jax_dataloader as jdl
 
-
-class diffusion():
+class Diffusion():
     def __init__(self, variance_min, variance_max, steps):
         self.steps = steps
         self.variance_min = variance_min
@@ -54,56 +54,69 @@ def main(args):
     models_dir = os.path.join(experiment_path, "models")
     os.makedirs(experiment_path)
 
-    diffusion = diffusion(trainConfig.linear_variance_min, trainConfig.linear_variance_max, trainConfig.tmax)
-
-
     train_latents, train_labels = load_latents("./data/train_latent")
     print(type(train_latents))
     print(train_latents.shape)
 
+
+
     test_latents, test_labels = load_latents("./data/test_latent")
 
-    trainConfig = trainConfig()
-    modelConfig = modelConfig()
-    DiTmodel = DiffusionTransformer(modelConfig)
+    trainconfig = trainConfig()
+    modelconfig = modelConfig()
+    DiTmodel = DiffusionTransformer(modelconfig)
     opt = optax.adamw(learning_rate=1e-3)
     optimizer = nnx.Optimizer(DiTmodel, opt, wrt=nnx.Param)
+
+    diffusion = Diffusion(trainconfig.linear_variance_min, trainconfig.linear_variance_max, trainconfig.tmax)
+
+    train_latents = jdl.ArrayDataset(train_latents, train_labels)
+    train_latents = jdl.DataLoader(
+            train_latents, # Can be a jdl.Dataset or pytorch or huggingface or tensorflow dataset
+        backend='jax', # Use 'jax' backend for loading data
+        batch_size= trainconfig.batch_size, # Batch size
+        shuffle=True, # Shuffle the dataloader every iteration or not
+        drop_last=False, # Drop the last batch or not
+
+    )
+
 
     train_steps = 0
     log_steps = 0
     running_loss = 0
     start_time = time.time()
-    for epoch in range(args.epochs):
-        for batch in tqdm(train_latents): # maybe convert to dataloader again?
+    for epoch in range(trainconfig.epochs):
+        print(f"Starting epoch {epoch}.")
+        for batch, labels in tqdm(train_latents): # maybe convert to dataloader again?
             
 
-            t = jnp.randint(0, 1000, (batch.shape[0],))
+            t = jax.random.randint(jax.random.PRNGKey(0), (batch.shape[0],), 0, 1000)
 
             # noise = 
-            alpha_bar_t = diffusion.get_alpha_bar(t)
-            noise = jnp.sqrt(1-alpha_bar_t) * jnp.random.normal(key=jax.random.PRNGKey(0), shape=batch.shape)
+            alpha_bar_t = diffusion.get_alpha_bar(t)[:, None, None, None]
+            noise = jnp.sqrt(1-alpha_bar_t) * jax.random.normal(key=jax.random.PRNGKey(0), shape=batch.shape)
 
             batch *= 18215 * jnp.sqrt(alpha_bar_t)
 
             batch += noise
             
             jax.device_put(batch, device=gpu_device)
-            print(batch.shape)
+            # print(batch.shape)
             jax.device_put(t, device=gpu_device)
             jax.device_put(noise, device=gpu_device)
 
             train_step(DiTmodel, optimizer, batch, t, noise)
 
-        if epoch % trainConfig.ckpt_frequency == 0:
+        if epoch % trainconfig.ckpt_frequency == 0:
             # Bundle states into checkpoint and save for later EMA.
             model_state = nnx.state(deepcopy(DiTmodel))
-            ckpt = {'model': model_state, 'config': trainConfig, 'epoch': epoch, "args": args}
+            ckpt = {'model': model_state, 'config': trainconfig, 'epoch': epoch, "args": args}
             checkpointer = ocp.StandardCheckpointer()
             checkpointer.save(os.path.join(models_dir, f'ckpt_{epoch//args.ckpt_frequency}'), ckpt)
     
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentPareser()
+    parser = argparse.ArgumentParser()
     parser.add_argument("--model_config", "-m", default="DiT-S", help="The name of the model configurations")
     parser.add_argument("--data_directory", "-d", default="./data/", help="Directory to load ImageNet-100k from.")
     parser.add_argument("--results_dir", "-r", default="./results", help="Directory to save results to.")

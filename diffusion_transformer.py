@@ -149,12 +149,13 @@ class DiTPatch(nnx.Module):
         # return input
     
     def convert_to_stream(self, input):
+        #print(input.shape)
         input = jnp.einsum('chw->hwc', input)
         input = self.patch_embeddings(input)
         input = input.reshape(-1, self.config.token_length, self.config.DiT_hidden_size)
         return input
 
-@flax.struct.dataclass
+#@flax.struct.dataclass
 class DiffusionTransformer(nnx.Module):
     """Diffusion Transformer"""
     def __init__(self, config: modelConfig):

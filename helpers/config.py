@@ -24,7 +24,7 @@ class trainConfig:
     def __init__(self):
         # Training details
         self.batch_size = 8 # 256
-        self.epochs = 10 # 1m
+        self.epochs = 3 # 1m
 
         self.learning_rate = 1e-4
         self.ema = 0.9999
@@ -33,5 +33,5 @@ class trainConfig:
         self.linear_variance_min = 1e-4
         self.linear_variance_max = 2e-2
 
-        self.ckpt_frequency = 5
+        self.ckpt_frequency = 1
         
