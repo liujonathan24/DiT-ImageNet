@@ -15,20 +15,11 @@ import orbax.checkpoint as ocp
 import time
 import jax_dataloader as jdl
 import json
-
-
-class Diffusion():
-    def __init__(self, variance_min, variance_max, steps):
-        self.steps = steps
-        self.variance_min = variance_min
-        self.variance_max = variance_max
-        variances = jnp.linspace(variance_max, variance_min, steps)
-        alpha = 1 - variances
-        self.alpha_bar = jnp.cumprod(alpha)
-
-    def get_alpha_bar(self, t):
-        return self.alpha_bar[t]
-
+from helpers.porting import save_checkpoint, restore_checkpoint
+from helpers.logging import setup_logging
+from helpers.diffusion import Diffusion
+import logging
+import json
 
 
 @nnx.jit  # automatic state management for JAX transforms
@@ -41,47 +32,6 @@ def train_step(model, optimizer, x, t, y):
   optimizer.update(model, grads)  # in-place updates
 
   return loss
-
-
-import logging
-import json
-
-class JsonFormatter(logging.Formatter):
-    def format(self, record):
-        json_record = {
-            "timestamp": self.formatTime(record, self.datefmt),
-            "level": record.levelname,
-            "message": record.getMessage(),
-        }
-        return json.dumps(json_record)
-
-def setup_logging(experiment_path):
-    log_path = os.path.join(experiment_path, "training.log")
-    json_log_path = os.path.join(experiment_path, "training.json.log")
-
-    print(f"Logs will be saved to: {log_path} and {json_log_path}")
-
-    # Set up the logger
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
-
-    # Create a file handler for traditional logging
-    file_handler = logging.FileHandler(log_path)
-    file_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
-    logger.addHandler(file_handler)
-
-    # Create a file handler for JSON logging
-    json_file_handler = logging.FileHandler(json_log_path)
-    json_file_handler.setFormatter(JsonFormatter())
-    logger.addHandler(json_file_handler)
-
-    # Create a console handler
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
-    logger.addHandler(console_handler)
-
-
-from helpers.porting import save_checkpoint, restore_checkpoint
 
 def main(args):
     start_time = time.time()
@@ -127,7 +77,7 @@ def main(args):
         start_epoch = 0
 
     # Log shape of the model
-    logging.info(jax.tree.map(lambda x: str(type(x)), nnx.split(DiTmodel)[1]))  # Initial state
+    # logging.info(jax.tree.map(lambda x: str(type(x)), nnx.split(DiTmodel)[1]))  # Initial state
 
     diffusion = Diffusion(trainconfig.linear_variance_min, trainconfig.linear_variance_max, trainconfig.tmax)
 
