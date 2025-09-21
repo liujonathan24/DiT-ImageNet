@@ -16,8 +16,8 @@ class MHA(nnx.Module):
         
 
         self.d_head = self.hidden // self.num_heads
-        self.qkv_proj = nnx.Linear(self.hidden, 3 * self.hidden, rngs=config.rngs)
-        self.out_proj = nnx.Linear(self.hidden, self.hidden, rngs=config.rngs)
+        self.qkv_proj = nnx.Linear(self.hidden, 3 * self.hidden, rngs=nnx.Rngs(0))
+        self.out_proj = nnx.Linear(self.hidden, self.hidden, rngs=nnx.Rngs(0))
 
     def __call__(self, x):
         return self.forward(x)
@@ -53,9 +53,9 @@ class MLP(nnx.Module):
         options compared to ViT implementations, but 
         sufficient for the task. Uses GeLU activations.
         """
-        self.fc1 = nnx.Linear(config.DiT_hidden_size, config.MLP_hidden_size, rngs=config.rngs)
+        self.fc1 = nnx.Linear(config.DiT_hidden_size, config.MLP_hidden_size, rngs=nnx.Rngs(0))
         self.act = lambda t: nnx.gelu(t, approximate=True)
-        self.fc2 = nnx.Linear(config.MLP_hidden_size, config.DiT_hidden_size, rngs=config.rngs)
+        self.fc2 = nnx.Linear(config.MLP_hidden_size, config.DiT_hidden_size, rngs=nnx.Rngs(0))
     
     def __call__(self, x):
         return self.forward(x)
@@ -73,13 +73,13 @@ class DiTBlock(nnx.Module):
         """
         
         # self.config = config
-        self.LayerNorm1 = nnx.LayerNorm(config.DiT_hidden_size, rngs=config.rngs)
-        self.LayerNorm2 = nnx.LayerNorm(config.DiT_hidden_size, rngs=config.rngs)
+        self.LayerNorm1 = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(0))
+        self.LayerNorm2 = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(0))
         self.MHA = MHA(config)
         self.MLP = MLP(config) 
 
         # MLP for conditioning info
-        self.cLinWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size * 6, rngs=config.rngs)
+        self.cLinWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size * 6, rngs=nnx.Rngs(0))
     
     def __call__(self, x, conditioning):
         """Uses vmap to process batched inputs."""
@@ -112,9 +112,9 @@ class DiTBlock(nnx.Module):
 class DiTFinalLayer(nnx.Module):
     def __init__(self, config: modelConfig):
         
-        self.LayerNorm = nnx.LayerNorm(config.DiT_hidden_size, rngs=config.rngs)
-        self.linear = nnx.Linear(config.DiT_hidden_size, config.patch_size**2*config.output_dim, rngs=config.rngs) 
-        self.linWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size*2, rngs=config.rngs)
+        self.LayerNorm = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(0))
+        self.linear = nnx.Linear(config.DiT_hidden_size, config.patch_size**2*config.output_dim, rngs=nnx.Rngs(0)) 
+        self.linWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size*2, rngs=nnx.Rngs(0))
 
     def forward(self, x, conditioning):
         x = self.LayerNorm(x)
@@ -143,7 +143,7 @@ class DiTPatch(nnx.Module):
             kernel_size=(config.patch_size, config.patch_size),
             strides=(config.patch_size, config.patch_size),
             padding='VALID',                           
-            rngs=config.rngs,
+            rngs=nnx.Rngs(0),
         )
 
     def convert_to_patches(self, input):
