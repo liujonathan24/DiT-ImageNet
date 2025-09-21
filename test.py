@@ -35,7 +35,7 @@ rngs = nnx.Rngs(params=key)
 
 
 
-checkpoint_path = "/scratch/network/jl0796/DiT-ImageNet/results/experiment-v65/models/ckpt_0"
+checkpoint_path = "/scratch/network/jl0796/DiT-ImageNet/results/experiment-v66/models/ckpt_0"
 checkpoint_path = os.path.abspath(checkpoint_path)
 #abstract_model = nnx.eval_shape(lambda: DiffusionTransformer(modelconfig))
 abstract_model = nnx.eval_shape(lambda: model)
@@ -52,23 +52,17 @@ restored_ckpt = checkpointer.restore(
     checkpoint_path,
     # args=ocp.args.StandardRestore(abstract_state)
 )
-
 # Extract components
 model_state_restored = restored_ckpt['model']
 epoch_restored = restored_ckpt['epoch']
 config_restored = restored_ckpt['config']
-
 nnx.update(model, model_state_restored)
-
 print("done")
-
-
 config = modelConfig()
 batch = 8
 test_input = jnp.ones((batch, config.token_length, config.DiT_hidden_size))
 test_condit = jnp.ones((batch, config.DiT_hidden_size))
 test_timesteps = jnp.ones(batch)
-        
 test_input = jnp.ones((batch, 4, 32, 32))
 #test_DiT = DiffusionTransformer(config)
 x = model(test_input, test_timesteps)

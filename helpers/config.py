@@ -2,7 +2,7 @@ from flax import nnx
 class modelConfig:
     def __init__(self):
         self.model_type = 'DiT-S'
-        self.rngs = nnx.Rngs(42)
+        self.rngs = nnx.Rngs(params=42)
 
         # Patch details
         self.input_size = 32
