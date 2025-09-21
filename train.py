@@ -14,6 +14,8 @@ import optax
 import orbax.checkpoint as ocp
 import time
 import jax_dataloader as jdl
+import json
+
 
 class Diffusion():
     def __init__(self, variance_min, variance_max, steps):
@@ -53,6 +55,7 @@ def main(args):
     experiment_path = os.path.join(args.results_dir, f"experiment-v{experiment_number}")
     models_dir = os.path.join(experiment_path, "models")
     os.makedirs(experiment_path)
+
 
     train_latents, train_labels = load_latents("./data/train_latent")
     print(type(train_latents))
@@ -106,14 +109,18 @@ def main(args):
             jax.device_put(noise, device=gpu_device)
 
             train_step(DiTmodel, optimizer, batch, t, noise)
-
         if epoch % trainconfig.ckpt_frequency == 0:
             # Bundle states into checkpoint and save for later EMA.
             model_state = nnx.state(deepcopy(DiTmodel))
-            ckpt = {'model': model_state, 'config': trainconfig, 'epoch': epoch, "args": args}
+            ckpt = {'model': model_state, 'config': trainconfig.to_dict(), 'epoch': epoch} #, "args": vars(args)}
             checkpointer = ocp.StandardCheckpointer()
-            checkpointer.save(os.path.join(models_dir, f'ckpt_{epoch//args.ckpt_frequency}'), ckpt)
-    
+            checkpointer.save(os.path.abspath(os.path.join(models_dir, f'ckpt_{epoch}')), ckpt)
+            checkpointer.wait_until_finished()
+
+            # Save args separately as JSON
+            args_path = os.path.join(models_dir, f'ckpt_{epoch}_args.json')
+            with open(args_path, 'w') as f:
+                json.dump(vars(args), f)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
