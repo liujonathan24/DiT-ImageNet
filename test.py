@@ -16,19 +16,20 @@ from helpers.diffusion import Diffusion
 from vae.import_sd_vae_torch import get_sd_vae
 from PIL import Image
 import numpy as np
+import torch
 
 from helpers.porting import restore_checkpoint
 
 def main(args):
-    #if jax.devices("gpu"):
-    #    gpu_device = jax.devices("gpu")[0]
-    #else:
-    #    gpu_device = jax.devices("cpu")[0]
-    gpu_device = jax.devices("cpu")[0]
-    # assert gpu_device != None
+    if jax.devices("gpu"):
+        gpu_device = jax.devices("gpu")[0]
+    else:
+        gpu_device = jax.devices("cpu")[0]
+    # gpu_device = jax.devices("cpu")[0]
+    assert gpu_device != None
 
     sd_vae, _ = get_sd_vae()
-
+    
 
     modelconfig = modelConfig()
     trainconfig = trainConfig()
@@ -49,7 +50,7 @@ def main(args):
     for i in range(int(jnp.ceil(1000/trainconfig.batch_size))):
         # Diffusion process. Starts with [b, c, h, w] = [b, 4, 32, 32] ~ N(0, 1)
         x_t = jax.random.normal(rngs, shape=(trainconfig.batch_size, config.image_channels, config.input_size, config.input_size))
-        for t in range(2, 0, -1): # range(1000, 0, -1):
+        for t in range(1000, 0, -1): # range(1000, 0, -1):
             # t = jnp.ones((trainconfig.batch_size)) * t
             # print(x_t.shape, t.shape)
             t_vec = jnp.ones((trainconfig.batch_size)) * t
@@ -65,18 +66,25 @@ def main(args):
         # Decode:
         x_t /= 0.18215
         print(f"Final shape is {x_t.shape}") # (12, 4, 32, 32)
-        for j in range(trainconfig.batch): 
-            img = sd_vae.decode(x_t[j])  # shape (4, 32, 32)
-            print(f"Img shape is: {img.shape}")
+        img = sd_vae.decode(torch.tensor(np.array(x_t))).sample
+        print(img.shape)
+        img = img.detach().numpy() # todo: fix when it's on gpu
+
+        for j in range(img.shape[0]):
+            # take one image (3, H, W)
+            im_arr = img[j]
+
+            # rearrange to (H, W, C)
+            im_arr = np.transpose(im_arr, (1, 2, 0))
+            im_arr = im_arr * 2 + 0.5
+            im_arr *= 255
+            im_arr = im_arr.astype(np.uint8)
+            print(im_arr.shape)
+            # save
+            im = Image.fromarray(im_arr)
+            im.save(os.path.join(args.output_dir, f"sample_{i * trainconfig.batch_size + j}.jpeg"))
+
             
-            # Convert to numpy & rescale
-            img_np = np.array(img)  
-            img_np = img_np * 2 + 0.5
-            img_np *= 255
-            # x = (x - 0.5) / 0.5
-            
-            im = Image.fromarray(img_np)
-            im.save(f"sample_{i*trainconfig.batch + j}.jpeg")
         break
 
 
