@@ -44,12 +44,12 @@ def main(args):
 
     if args.resume:
         experiment_path = args.resume
-        models_dir = os.path.join(experiment_path, "models")
+        models_dir = os.path.abspath(os.path.join(experiment_path, "models"))
     else:
         os.makedirs(args.results_dir, exist_ok=True)
         experiment_number = len(glob(f"{args.results_dir}/*"))
         experiment_path = os.path.join(args.results_dir, f"experiment-v{experiment_number}")
-        models_dir = os.path.join(experiment_path, "models")
+        models_dir = os.path.abspath(os.path.join(experiment_path, "models"))
         os.makedirs(models_dir)
 
     # Set up logging and log initial experiment information.
@@ -62,19 +62,19 @@ def main(args):
 
     trainconfig = trainConfig()
     modelconfig = modelConfig()
-    DiTmodel = DiffusionTransformer(modelconfig)
-    opt = optax.adamw(learning_rate=1e-3)
-    optimizer = nnx.Optimizer(DiTmodel, opt, wrt=nnx.Param)
 
     options = ocp.CheckpointManagerOptions(max_to_keep=3, save_interval_steps=2)
     mngr = ocp.CheckpointManager(models_dir, options=options)
 
     if args.resume:
-        extra_params = restore_checkpoint(mngr, DiTmodel)
+        DiTmodel, extra_params = restore_checkpoint(models_dir, modelconfig, trainconfig, gpu_device)
         start_epoch = extra_params['epoch'] + 1
         logging.info(f"Resuming training from epoch {start_epoch}")
     else:
+        DiTmodel = DiffusionTransformer(modelconfig)
         start_epoch = 0
+    opt = optax.adamw(learning_rate=1e-3)
+    optimizer = nnx.Optimizer(DiTmodel, opt, wrt=nnx.Param)
 
     # Log shape of the model
     # logging.info(jax.tree.map(lambda x: str(type(x)), nnx.split(DiTmodel)[1]))  # Initial state
