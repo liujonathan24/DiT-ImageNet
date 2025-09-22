@@ -26,7 +26,6 @@ print(f"✅ Using device: {DEVICE}")
 # Heavily modified the code to become load_data & return_dataloader functions, including the use of jax dataloader instead of torch
 # The rest is my code
 
-
 def resize_and_center_crop(
     img,
     resize_short=256,
