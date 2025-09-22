@@ -34,14 +34,13 @@ def restore_checkpoint(model_path, modelconfig: modelConfig, trainconfig: trainC
     options = ocp.CheckpointManagerOptions(max_to_keep=3, save_interval_steps=2)
     mngr = ocp.CheckpointManager(path, options=options)
     extra_params = {'config': trainconfig.to_dict(), 'epoch': 0}
-    obj = ocp.args.Composite(
-                state=ocp.args.StandardSave(status),
-                extra_params=ocp.args.JsonSave(extra_params),
-            )
     restored = mngr.restore(
         mngr.latest_step(),
-        args=obj
+        args=ocp.args.Composite(
+            state=ocp.args.StandardRestore(abstract_train_state),
+            extra_params=ocp.args.JsonRestore(extra_params),
+        )
     )
     
-    state = nnx.update(DiTmodel, restored['state'])
+    nnx.update(DiTmodel, restored['state'])
     return DiTmodel, restored['extra_params']
