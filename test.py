@@ -27,7 +27,7 @@ def main(args):
     gpu_device = jax.devices("cpu")[0]
     # assert gpu_device != None
 
-    sd_vae = get_sd_vae()
+    sd_vae, _ = get_sd_vae()
 
 
     modelconfig = modelConfig()
@@ -49,16 +49,17 @@ def main(args):
     for i in range(int(jnp.ceil(1000/trainconfig.batch_size))):
         # Diffusion process. Starts with [b, c, h, w] = [b, 4, 32, 32] ~ N(0, 1)
         x_t = jax.random.normal(rngs, shape=(trainconfig.batch_size, config.image_channels, config.input_size, config.input_size))
-        for t in range(1000, 0, -1):
-            t = jnp.ones((trainconfig.batch_size, 1)) * t
-            print(x_t.shape, t.shape)
-            prediction = model(x_t, t)
+        for t in range(2, 0, -1): # range(1000, 0, -1):
+            # t = jnp.ones((trainconfig.batch_size)) * t
+            # print(x_t.shape, t.shape)
+            t_vec = jnp.ones((trainconfig.batch_size)) * t
+            prediction = model(x_t, t_vec)
             modified_x_t = x_t - prediction * (1-diffusion.alphas[t])/(jnp.sqrt(1-diffusion.alpha_bars[t]))
 
             modified_x_t *= 1/jnp.sqrt(diffusion.alphas[t])
 
-            z_t = jnp.random.normal(rngs, shape=(trainconfig.batch_size, config.token_length, config.DiT_hidden_size)) if t >1 else 0
-            noise_t = jnp.sqrt(diffusion.betas[t]) * z_t
+            z_t = jax.random.normal(rngs, shape=(trainconfig.batch_size, config.image_channels, config.input_size, config.input_size)) if t >1 else jnp.zeros((trainconfig.batch_size, config.image_channels, config.input_size, config.input_size))
+            noise_t = jnp.sqrt(diffusion.variances[t]) * z_t
 
             x_t = modified_x_t + noise_t
         # Decode:
