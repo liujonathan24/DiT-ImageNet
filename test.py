@@ -20,10 +20,11 @@ import numpy as np
 from helpers.porting import restore_checkpoint
 
 def main(args):
-    if jax.devices("gpu"):
-        gpu_device = jax.devices("gpu")[0]
-    else:
-        gpu_device = jax.devices("cpu")[0]
+    #if jax.devices("gpu"):
+    #    gpu_device = jax.devices("gpu")[0]
+    #else:
+    #    gpu_device = jax.devices("cpu")[0]
+    gpu_device = jax.devices("cpu")[0]
     # assert gpu_device != None
 
     sd_vae = get_sd_vae()
@@ -39,13 +40,15 @@ def main(args):
     print(f"Restored epoch: {extra_params['epoch']}")
 
     config = modelConfig()
-    diffusion = Diffusion()
+    trainconfig = trainConfig()
+    diffusion = Diffusion(trainconfig.linear_variance_min, trainconfig.linear_variance_max, trainconfig.tmax)
 
     os.makedirs(args.output_dir, exist_ok=True)
+    rngs = jax.random.PRNGKey(42)
     # Sample 1000 images for FID.
-    for i in range(jnp.ceil(1000/trainconfig.batch_size)):
+    for i in range(int(jnp.ceil(1000/trainconfig.batch_size))):
         # Diffusion process. Starts with [b, c, h, w] = [b, 4, 32, 32] ~ N(0, 1)
-        x_t = jnp.random.normal(trainconfig.batch_size, config.image_channels, config.input_size, config.input_size)
+        x_t = jax.random.normal(rngs, shape=(trainconfig.batch_size, config.image_channels, config.input_size, config.input_size))
         for t in range(1000, 0, -1):
             t = jnp.ones((trainconfig.batch_size, 1)) * t
             print(x_t.shape, t.shape)
@@ -54,7 +57,7 @@ def main(args):
 
             modified_x_t *= 1/jnp.sqrt(diffusion.alphas[t])
 
-            z_t = jnp.random.normal(trainconfig.batch_size, config.token_length, config.DiT_hidden_size) if t >1 else 0
+            z_t = jnp.random.normal(rngs, shape=(trainconfig.batch_size, config.token_length, config.DiT_hidden_size)) if t >1 else 0
             noise_t = jnp.sqrt(diffusion.betas[t]) * z_t
 
             x_t = modified_x_t + noise_t
