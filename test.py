@@ -18,13 +18,21 @@ import jax_dataloader as jdl
 from helpers.porting import restore_checkpoint
 
 def main(args):
+    if jax.devices("gpu"):
+        gpu_device = jax.devices("gpu")[0]
+    else:
+        gpu_device = None
+    assert gpu_device != None
+
+
     modelconfig = modelConfig()
+    trainconfig = trainConfig()
     model = DiffusionTransformer(modelconfig)
 
-    options = ocp.CheckpointManagerOptions(max_to_keep=3, save_interval_steps=2)
-    mngr = ocp.CheckpointManager(args.checkpoint_path, options=options)
-
-    extra_params = restore_checkpoint(mngr, model)
+    # options = ocp.CheckpointManagerOptions(max_to_keep=3, save_interval_steps=2)
+    # mngr = ocp.CheckpointManager(args.checkpoint_path, options=options)
+    model, extra_params = restore_checkpoint(args.checkpoint_path, modelconfig, trainconfig, gpu_device)
+    # extra_params = restore_checkpoint(mngr, model)
 
     print("Model restored from checkpoint")
     print(f"Restored epoch: {extra_params['epoch']}")
