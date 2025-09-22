@@ -63,11 +63,20 @@ def main(args):
 
             x_t = modified_x_t + noise_t
         # Decode:
-        print(f"Final shape is {x_t.shape}")
-        img = sd_vae.decode(x_t)
-        print(f"Img shape is: {img.shape}")
-        im = Image.fromarray(np.array(img))
-        im.save(f"sample_{i}.jpeg")
+        x_t /= 0.18215
+        print(f"Final shape is {x_t.shape}") # (12, 4, 32, 32)
+        for j in range(trainconfig.batch): 
+            img = sd_vae.decode(x_t[j])  # shape (4, 32, 32)
+            print(f"Img shape is: {img.shape}")
+            
+            # Convert to numpy & rescale
+            img_np = np.array(img)  
+            img_np = img_np * 2 + 0.5
+            img_np *= 255
+            # x = (x - 0.5) / 0.5
+            
+            im = Image.fromarray(img_np)
+            im.save(f"sample_{i*trainconfig.batch + j}.jpeg")
         break
 
 
