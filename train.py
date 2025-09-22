@@ -97,15 +97,19 @@ def main(args):
         running_loss = 0.0
         for i, (batch, labels) in enumerate(tqdm(train_latents)):
 
-            t = jax.random.randint(random_key, (batch.shape[0],), 0, 1000)
+            iter_key, random_key = jax.random.split(random_key)
+            t_key, noise_key = jax.random.split(iter_key)
+
+            t = jax.random.randint(t_key, (batch.shape[0],), 0, 1000)
 
             alpha_bar_t = diffusion.get_alpha_bar(t)[:, None, None, None]
-            noise = jnp.sqrt(1-alpha_bar_t) * jax.random.normal(key=jax.random.PRNGKey(0), shape=batch.shape)
+            
+            epsilon = jax.random.normal(key=noise_key, shape=batch.shape)
             
             batch *= .18215 
-            noisy_batch = batch * jnp.sqrt(alpha_bar_t) + noise
+            noisy_batch = batch * jnp.sqrt(alpha_bar_t) + jnp.sqrt(1 - alpha_bar_t) * epsilon
 
-            loss = train_step(DiTmodel, optimizer, noisy_batch, t, noise)
+            loss = train_step(DiTmodel, optimizer, noisy_batch, t, epsilon)
             running_loss += loss.item()
             if (i + 1) % trainconfig.log_frequency == 0:
                 avg_loss = running_loss / trainconfig.log_frequency
