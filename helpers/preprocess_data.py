@@ -55,7 +55,7 @@ class CustomImageDataset(Dataset):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        path = self.samples[idx]
+        path, target = self.samples[idx]
         with open(path, 'rb') as f:
             sample = Image.open(f).convert('RGB')
             x = jnp.asarray(sample).astype(jnp.float32) / 255.0 # JAX array [0, 1]
@@ -117,8 +117,8 @@ def load_data(number_classes=None):
                     item = (path, class_idx)
                     valid_samples.append(item)
 
-    train_dataset = CustomImageDataset(np.array(train_samples))
-    valid_dataset = CustomImageDataset(np.array(valid_samples))
+    train_dataset = CustomImageDataset(train_samples)
+    valid_dataset = CustomImageDataset(valid_samples)
 
 
     print(f"Total training images ({number_classes} classes): {len(train_dataset)}")
