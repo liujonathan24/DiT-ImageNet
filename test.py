@@ -17,7 +17,6 @@ from vae.import_sd_vae_torch import get_sd_vae
 from PIL import Image
 import numpy as np
 import torch
-
 from helpers.porting import restore_checkpoint
 
 def main(args):
@@ -25,7 +24,6 @@ def main(args):
         gpu_device = jax.devices("gpu")[0]
     else:
         gpu_device = jax.devices("cpu")[0]
-    # gpu_device = jax.devices("cpu")[0]
     assert gpu_device != None
 
     sd_vae, _ = get_sd_vae()

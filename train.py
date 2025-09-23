@@ -16,7 +16,7 @@ import time
 import jax_dataloader as jdl
 import json
 from helpers.porting import save_checkpoint, restore_checkpoint
-from helpers.logging import setup_logging
+from helpers.logging_utils import setup_logging
 from helpers.diffusion import Diffusion
 import logging
 import json
