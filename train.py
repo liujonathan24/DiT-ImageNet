@@ -73,7 +73,7 @@ def main(args):
     else:
         DiTmodel = DiffusionTransformer(modelconfig)
         start_epoch = 0
-    opt = optax.adamw(learning_rate=1e-3)
+    opt = optax.adamw(learning_rate=trainconfig.learning_rate)
     optimizer = nnx.Optimizer(DiTmodel, opt, wrt=nnx.Param)
 
     # Log shape of the model

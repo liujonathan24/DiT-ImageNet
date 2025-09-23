@@ -1,11 +1,8 @@
 import jax 
 import jax.numpy as jnp
-from jax import grad, vmap
+from jax import vmap
 from flax import nnx
 from helpers.config import modelConfig
-import flax
-
-        
 
 class MHA(nnx.Module):
     def __init__(self, config: modelConfig):
@@ -14,7 +11,6 @@ class MHA(nnx.Module):
         self.hidden = config.DiT_hidden_size
         self.num_heads = config.n_heads
         
-
         self.d_head = self.hidden // self.num_heads
         self.qkv_proj = nnx.Linear(self.hidden, 3 * self.hidden, rngs=nnx.Rngs(0))
         self.out_proj = nnx.Linear(self.hidden, self.hidden, rngs=nnx.Rngs(0))
@@ -24,15 +20,15 @@ class MHA(nnx.Module):
 
     def forward(self, x):
         # x: [L, Hidden]
-        y = self.qkv_proj(x)                    # [L, 3H]
+        y = self.qkv_proj(x)                     # [L, 3H]
         y = y.reshape(self.length, 3, self.num_heads, self.d_head)   # [L, 3, head, d]
         y = jnp.transpose(y, (1, 2, 0, 3))       # [3, h, L, d]
         q, k, v = y[0], y[1], y[2]               # each [h, L, d]
 
         values, attention = self.scaled_dot_product(q, k, v)  # values: [h, L, d]
         values = jnp.transpose(values, (1, 0, 2)).reshape(self.length, self.hidden)  # [L, H]
-        values = self.out_proj(values)              # [L, H]
-        return values, attention               # attention: [h, L, L]
+        values = self.out_proj(values)           # [L, H]
+        return values, attention                 # attention: [h, L, L]
   
     def scaled_dot_product(self, q, k, v):
         """Implements scaled dot product with Pyjnp's functionality"""
@@ -56,6 +52,7 @@ class MLP(nnx.Module):
         self.fc1 = nnx.Linear(config.DiT_hidden_size, config.MLP_hidden_size, rngs=nnx.Rngs(0))
         self.act = lambda t: nnx.gelu(t, approximate=True)
         self.fc2 = nnx.Linear(config.MLP_hidden_size, config.DiT_hidden_size, rngs=nnx.Rngs(0))
+        # TODO: Initialize to identity?
     
     def __call__(self, x):
         return self.forward(x)
@@ -84,15 +81,10 @@ class DiTBlock(nnx.Module):
     def __call__(self, x, conditioning):
         """Uses vmap to process batched inputs."""
         return self.forward(x, conditioning)
-        # func = lambda x, condit: self.forward(x, condit)
-        # return vmap(func, in_axes=(0, 0), out_axes=0)(x, conditioning)
 
     def forward(self, x, conditioning):
-        # print(f"Forward of DiTBlock: {x.shape, conditioning.shape}")
         gamma1, beta1, alpha1, gamma2, beta2, alpha2 = self.cLinWeights(conditioning).reshape((6, -1))
         tmp = self.LayerNorm1(x)
-        # print(gamma1.shape)
-        # print(tmp.shape)
         tmp = gamma1*tmp + beta1 
         tmp, attn = self.MHA(tmp)
         tmp = alpha1*tmp
@@ -119,10 +111,8 @@ class DiTFinalLayer(nnx.Module):
     def forward(self, x, conditioning):
         x = self.LayerNorm(x)
         alpha, beta = self.linWeights(conditioning).reshape(2, -1)
-        # print(alpha.shape, beta.shape)
         x = alpha * x + beta
         x = self.linear(x)
-        # print(f"Shape of final layer: {x.shape}")
         return x
 
     def __call__(self, x, conditioning):
@@ -130,7 +120,6 @@ class DiTFinalLayer(nnx.Module):
 
 class DiTPatch(nnx.Module):
     def __init__(self, config: modelConfig):
-        # self.config = config
         self.output_dim = config.output_dim
         self.patch_size = config.patch_size
         self.output_channels = config.output_channels
@@ -153,13 +142,11 @@ class DiTPatch(nnx.Module):
         return imgs
     
     def convert_to_stream(self, input):
-        #print(input.shape)
         input = jnp.einsum('chw->hwc', input)
         input = self.patch_embeddings(input)
         input = input.reshape(-1, self.token_length, self.DiT_hidden_size)
         return input
 
-#@flax.struct.dataclass
 class DiffusionTransformer(nnx.Module):
     """Diffusion Transformer"""
     def __init__(self, config: modelConfig):
@@ -167,8 +154,6 @@ class DiffusionTransformer(nnx.Module):
         self.DiT_hidden_size = config.DiT_hidden_size
         self.n_layers = config.n_layers
 
-        # self.layers = nnx.Sequential([DiTBlock(config) for _ in range(self.n_layers)])
-        # print(flax.__version__)
         self.layers = nnx.List([
                  DiTBlock(config) for i in range(self.n_layers)
                  ])
@@ -179,10 +164,10 @@ class DiffusionTransformer(nnx.Module):
         self.pos_embed = self.pos_embed() #TODO: freeze these values.
     
     def pos_embed(self):
-        # Implements: pos / 10000^(2i/d_model)
+        # Implements: pos / 1000^(2i/d_model)
         # Implementation from https://medium.com/thedeephub/positional-encoding-explained-a-deep-dive-into-transformer-pe-65cfe8cfe10b  
         position = jnp.arange(self.length)[:, jnp.newaxis]
-        # The original formula pos / 10000^(2i/d_model) is equivalent to pos * (1 / 10000^(2i/d_model)).
+        # The original formula pos / 1000^(2i/d_model) is equivalent to pos * (1 / 1000^(2i/d_model)).
         # I use the below version for numerical stability
         div_term = jnp.exp(jnp.arange(0, self.DiT_hidden_size, 2) * -(jnp.log(10000.0) / self.DiT_hidden_size))
         
@@ -219,32 +204,22 @@ class DiffusionTransformer(nnx.Module):
         t: (N,) tensor of diffusion timesteps
         y: (N,) tensor of class labels
         """
-        # print(f"Forward shapes: {x.shape, timestep.shape}")
         x = self.mapper.convert_to_stream(x) # Convert [4, 32, 32] to [4*32*32] & applies MLP
-        # print(f"Shape after stream: {x.shape}")
         x = x + self.pos_embed # Adds sinusoidal PE
-        # print(f"After pos embed: {x.shape}")
         
         conditioning = self.time_MLP(self.time_embed(timestep)) # Embeds single timestep to [hidden_dim]
-        # print(f"Post conditioning: {conditioning.shape}")
 
-        # x = self.layers(x, conditioning)
         for layer in range(self.n_layers):
             x = self.layers[layer].forward(x, conditioning)
-            # print(f"Post layer: {x.shape}")
         x = self.final_layer(x, conditioning)
-        # print(f"Shape after final layer: {x.shape}")
         x = self.mapper.convert_to_patches(x)
-        # print(f"Shape after conversion to patches: {x.shape}")
         return x
             
 
     def __call__(self, x, conditioning): 
         """Uses vmap to process batched inputs."""
-        # print(f"Calling shapes: {x.shape, conditioning.shape}")
         func = lambda x, conditioning: self.forward(x, conditioning)
         return vmap(func, in_axes=(0, 0), out_axes=0)(x, conditioning)
-        # return self.forward(x, conditioning)
 
 if __name__=="__main__":
   # Testing
