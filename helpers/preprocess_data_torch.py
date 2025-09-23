@@ -195,8 +195,10 @@ def save_latents(dataset: CustomImageDataset, vae, config: trainConfig, output_d
         
         # Sample num_samples_per_image times
         # latent_samples will have shape (num_samples_per_image, batch_size, 4, 32, 32)
-        latent_samples = latent_dist.sample(sample_shape=(num_samples_per_image,)) 
-        
+        # latent_samples = latent_dist.sample(sample_shape=(num_samples_per_image,)) 
+        samples = [latent_dist.sample() for _ in range(num_samples_per_image)]
+        latent_samples = torch.stack(samples)
+
         # Reshape to (batch_size * num_samples_per_image, 4, 32, 32)
         latent_samples = latent_samples.permute(1, 0, 2, 3, 4).reshape(-1, 4, 32, 32)
         
@@ -223,7 +225,7 @@ if __name__=="__main__":
     vae, params = get_sd_vae()
     vae.to(DEVICE)
     config = trainConfig()
-    
+    config.batch_size = 8 
     print("Saving training set with 5 samples per image...")
     save_latents(train, vae, config, output_dir="./data/train_latent_5_samples_per_image", num_samples_per_image=5)
     

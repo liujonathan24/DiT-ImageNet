@@ -57,7 +57,7 @@ def main(args):
     logging.info(f"Starting experiment at {experiment_path}")
     logging.info(f"Arguments: {args}")
 
-    train_latents, train_labels = load_latents("./data/train_latent")
+    train_latents, train_labels = load_latents("./data/train_latent_5_samples_per_image")
     logging.info(f"Training latents shape: {train_latents.shape}")
 
     trainconfig = trainConfig()
