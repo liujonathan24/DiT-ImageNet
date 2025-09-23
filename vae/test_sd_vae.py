@@ -1,14 +1,19 @@
 import numpy as np
 from PIL import Image
 import jax.numpy as jnp
-from import_sd_vae import get_sd_vae
+# from vae.import_sd_vae_torch import get_sd_vae
+from vae.import_sd_vae import get_sd_vae
 from helpers.preprocess_data_torch import load_latents
 import jax_dataloader as jdl
+import torch
+
 
 # Load model & weights
 vae, params = get_sd_vae()
+# # 
+# vae.eval()
 
-test_image = False
+test_image = True
 test_restore_image = True
 
 if test_restore_image:
@@ -22,12 +27,14 @@ if test_restore_image:
         shuffle=True,
         drop_last=False,
     )
-    first_image = train_latents[0]
+    first_image, _ = next(iter(train_latents))
     print(f"First Image latent shape: {first_image.shape}")
     print(f"Latent stats before decoding (mean, min, max, var):")
     print(jnp.mean(first_image), jnp.min(first_image), jnp.max(first_image), jnp.var(first_image))
-
-    decoded_x = vae.apply(
+    
+    # # 
+    # first_image = torch.tensor(first_image.astype(np.float32))
+    decoded_x = vae.apply(# .decode(first_image).sample.detach().numpy() # .apply(
                     {"params": params},
                     first_image,
                     method=vae.decode).sample
