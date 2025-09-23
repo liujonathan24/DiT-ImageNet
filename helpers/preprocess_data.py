@@ -55,7 +55,7 @@ class CustomImageDataset(Dataset):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        path, target = self.samples[idx]
+        path = self.samples[idx]
         with open(path, 'rb') as f:
             sample = Image.open(f).convert('RGB')
             x = jnp.asarray(sample).astype(jnp.float32) / 255.0 # JAX array [0, 1]
