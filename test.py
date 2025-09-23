@@ -67,26 +67,24 @@ def main(args):
         # Decode:
         x_t /= 0.18215
         print(f"Final shape is {x_t.shape}") # (12, 4, 32, 32)
+        print(f"Latent stats before decoding (mean, min, max, var):")
+        print(jnp.mean(x_t), jnp.min(x_t), jnp.max(x_t), jnp.var(x_t))
         img = sd_vae.decode(torch.tensor(np.array(x_t))).sample
-        print(img.shape)
-        img = img.detach().numpy() # todo: fix when it's on gpu
+        print(f"Decoded image shape: {img.shape}")
+        img = img.detach().cpu().numpy()
 
         for j in range(img.shape[0]):
             # take one image (3, H, W)
             im_arr = img[j]
 
             # rearrange to (H, W, C)
-            print(np.mean(im_arr))
-            print(np.min(im_arr))
-            print(np.max(im_arr))
-
-            print(np.var(im_arr))
-            print()
             im_arr = np.transpose(im_arr, (1, 2, 0))
-            #im_arr = im_arr * 2 + 0.5
-            im_arr *= 32 #255
-            im_arr = im_arr.astype(np.uint8)
-            print(im_arr.shape)
+            
+            # VAE output is ~[-1, 1], convert to [0, 255] for saving
+            im_arr = np.clip(im_arr, -1.0, 1.0)
+            im_arr = (im_arr + 1) / 2.0
+            im_arr = (im_arr * 255).astype(np.uint8)
+
             # save
             im = Image.fromarray(im_arr)
             im.save(os.path.join(args.output_dir, f"sample_{i * trainconfig.batch_size + j}.jpeg"))

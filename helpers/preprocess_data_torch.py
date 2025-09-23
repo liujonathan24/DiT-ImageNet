@@ -162,11 +162,12 @@ def return_dataloader(train_dataset: CustomImageDataset,
     print(f"DataLoaders for created successfully.")
     print(f"{steps_per_epoch=}, val_steps: {len(valid_loader)}")
 
-def save_latents(dataset: CustomImageDataset, vae, config: trainConfig, output_dir="./data/"):
+def save_latents(dataset: CustomImageDataset, vae, config: trainConfig, output_dir="./data/", num_samples_per_image: int = 1):
     """
     Given a CustomImageDataset dataset, encodes images using the VAE
     saves the stored latents and classes. Allows every image to be 
     encoded in a single pass prior to training. 
+    num_samples_per_image: Number of latent samples to draw per input image.
     """
     os.makedirs(output_dir, exist_ok=True)   
     print(f"Saving files to: {os.path.abspath(output_dir)}")
@@ -179,30 +180,38 @@ def save_latents(dataset: CustomImageDataset, vae, config: trainConfig, output_d
         pin_memory=True
     )
 
-    latents = np.zeros((len(dataset), 4, 32, 32), dtype=np.float16)
+    total_latents_count = len(dataset) * num_samples_per_image
+    latents = np.zeros((total_latents_count, 4, 32, 32), dtype=np.float16)
     labels = []
 
+    current_latent_idx = 0
     for i, batch in tqdm(enumerate(dataloader), total=len(dataloader)):
         batch_images, batch_labels = batch
         
-        # Stack images into a single batch
         batch_x = torch.from_numpy(np.array(batch_images).astype(np.float32)).to(DEVICE)
         batch_x = torch.permute(batch_x, (0, 3, 1, 2))
 
-        # Encode image
         latent_dist = vae.encode(batch_x).latent_dist
-        latent = latent_dist.mean
+        
+        # Sample num_samples_per_image times
+        # latent_samples will have shape (num_samples_per_image, batch_size, 4, 32, 32)
+        latent_samples = latent_dist.sample(sample_shape=(num_samples_per_image,)) 
+        
+        # Reshape to (batch_size * num_samples_per_image, 4, 32, 32)
+        latent_samples = latent_samples.permute(1, 0, 2, 3, 4).reshape(-1, 4, 32, 32)
+        
+        num_current_latents = latent_samples.shape[0]
+        
+        latents[current_latent_idx : current_latent_idx + num_current_latents] = latent_samples.detach().cpu().numpy()
+        current_latent_idx += num_current_latents
 
-        # Calculate start and end indices for this batch
-        start_idx = i * config.batch_size
-        end_idx = start_idx + latent.shape[0]
+        # Extend labels by repeating each label num_samples_per_image times
+        for label in batch_labels:
+            labels.extend([label] * num_samples_per_image)
 
-        latents[start_idx:end_idx] = latent.detach().cpu().numpy()
-        labels.extend(batch_labels)
-
-    # Save latents and labels as .npy files
     np.save(os.path.join(output_dir, "latents.npy"), latents)
     np.save(os.path.join(output_dir, "labels.npy"), np.array(labels))
+    print(f"Saved {len(latents)} latents to {output_dir}")
 
 def load_latents(input_dir):
     latents = np.load(os.path.join(input_dir, "latents.npy"))
@@ -214,6 +223,10 @@ if __name__=="__main__":
     vae, params = get_sd_vae()
     vae.to(DEVICE)
     config = trainConfig()
-    save_latents(train, vae, config, output_dir="./data/train_latent")
-    save_latents(val, vae, config, output_dir="./data/test_latent")
+    
+    print("Saving training set with 5 samples per image...")
+    save_latents(train, vae, config, output_dir="./data/train_latent_5_samples_per_image", num_samples_per_image=5)
+    
+    print("Saving validation set with 5 samples per image...")
+    save_latents(val, vae, config, output_dir="./data/test_latent_5_samples_per_image", num_samples_per_image=5)
 
