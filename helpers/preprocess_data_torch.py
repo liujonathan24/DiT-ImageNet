@@ -193,6 +193,14 @@ def save_latents(dataset: CustomImageDataset, vae, config: trainConfig, output_d
 
         latent_dist = vae.encode(batch_x).latent_dist
         
+        # Add print statements here to inspect latent distribution stats
+        print(f"\nLatent distribution stats (mean, std, var) for batch {i}:")
+        print(f"  Mean of means: {latent_dist.mean.mean().item():.4f}")
+        print(f"  Mean of stds: {latent_dist.std.mean().item():.4f}")
+        print(f"  Mean of variances: {latent_dist.variance().mean().item():.4f}")
+        print(f"  Min of means: {latent_dist.mean.min().item():.4f}")
+        print(f"  Max of means: {latent_dist.mean.max().item():.4f}")
+        
         # Sample num_samples_per_image times
         # latent_samples will have shape (num_samples_per_image, batch_size, 4, 32, 32)
         # latent_samples = latent_dist.sample(sample_shape=(num_samples_per_image,)) 

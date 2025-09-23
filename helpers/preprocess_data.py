@@ -16,6 +16,36 @@ jdl.manual_seed(1234)
 # Heavily modified the code to become load_data & return_dataloader functions, including the use of jax dataloader instead of torch
 # The rest is my code
 
+def resize_and_center_crop(
+    img, # img is a NumPy array (H, W, C) with float32/uint8
+    resize_short=256,
+    crop_size=256,
+    method="linear"
+):
+    """
+    img: JAX or NumPy array with shape (H, W, C) and dtype float32/uint8
+    returns: JAX array with shape (crop_size, crop_size, C) or (C, crop_size, crop_size)
+    """
+    # Convert to PIL for resizing/cropping, then back to JAX array
+    x = Image.fromarray((img * 255).astype(np.uint8)) # Assuming img is [0,1] float or [0,255] uint8
+    if x.mode != 'RGB':
+        x = x.convert('RGB')
+
+    # scale so that the shorter side == resize_short
+    short = min(x.size)
+    scale = float(resize_short) / float(short)
+    new_h = max(1, int(round(x.size[1] * scale)))
+    new_w = max(1, int(round(x.size[0] * scale)))
+
+    x_resized = x.resize((new_w, new_h), Image.Resampling.LANCZOS)
+    
+    # center crop crop_size x crop_size
+    top = max(0, (new_h - crop_size) // 2)
+    left = max(0, (new_w - crop_size) // 2)
+    x_cropped = x_resized.crop((left, top, left + crop_size, top + crop_size))
+    
+    return jnp.asarray(x_cropped) # Return JAX array
+
 class CustomImageDataset(Dataset):
     def __init__(self, samples, transform=None):
         self.samples = samples
@@ -25,23 +55,13 @@ class CustomImageDataset(Dataset):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        print(idx)
-        print(self.samples[idx].shape)
-        #if isinstance(idx, np.ndarray):
-        #    idx = idx.item() 
-        output = self.samples[idx]
-        try:
-            paths, targets = output[:, 0], output[:, 1]
-        except:
-            paths, targets = output
-            paths = [paths]
-            targets = [targets]
-        samples = []
-        for path in paths:
-            with open(path, 'rb') as f:
-                sample = Image.open(f).convert('RGB')
-            samples.append(np.array(sample))
-        return samples, targets
+        path, target = self.samples[idx]
+        with open(path, 'rb') as f:
+            sample = Image.open(f).convert('RGB')
+            x = jnp.asarray(sample).astype(jnp.float32) / 255.0 # JAX array [0, 1]
+            x = resize_and_center_crop(x) # JAX array, cropped and resized
+            x = (x - 0.5) / 0.5 # JAX array [-1, 1]
+        return x, target
 
 def load_data(number_classes=None):
     print("Loading data")
@@ -135,61 +155,12 @@ def return_dataloader(train_dataset: CustomImageDataset,
     print(f"DataLoaders for created successfully.")
     print(f"{steps_per_epoch=}, val_steps: {len(valid_loader)}")
 
-def resize_and_center_crop(
-    img,
-    resize_short=256,
-    crop_size=256,
-    method="linear"
-):
-    """
-    img: JAX or NumPy array with shape (H, W, C) and dtype float32/uint8
-    returns: JAX array with shape (crop_size, crop_size, C) or (C, crop_size, crop_size)
-    """
-    x = jnp.asarray(img)
-    if x.ndim != 3:
-        raise ValueError(f"Expected HWC image, got shape {x.shape}")
-    H, W, C = x.shape
-
-    # scale so that the shorter side == resize_short
-    short = min(H, W)
-    scale = float(resize_short) / float(short)
-    new_h = max(1, int(round(H * scale)))
-    new_w = max(1, int(round(W * scale)))
-
-    x_resized = jimage.resize(x, (new_h, new_w, C), method=method)
-
-    # pad if needed so that we can center-crop crop_size x crop_size
-    # should not be necessary with default settings.
-    pad_h = max(0, crop_size - new_h)
-    pad_w = max(0, crop_size - new_w)
-    pad_top = pad_h // 2
-    pad_bottom = pad_h - pad_top
-    pad_left = pad_w // 2
-    pad_right = pad_w - pad_left
-
-    if pad_h > 0 or pad_w > 0:
-        # set padding to 0
-        x_resized = jnp.pad(
-            x_resized,
-            ((pad_top, pad_bottom), (pad_left, pad_right), (0, 0)),
-            mode="constant",
-            constant_values=0.0,
-        )
-        new_h = x_resized.shape[0]
-        new_w = x_resized.shape[1]
-
-    # center crop crop_size x crop_size
-    top = max(0, (new_h - crop_size) // 2)
-    left = max(0, (new_w - crop_size) // 2)
-    x_cropped = x_resized[top:top + crop_size, left:left + crop_size, :]
-    
-    return x_cropped
-
-def save_latents(dataset: CustomImageDataset, vae, params, config: trainConfig, output_dir="./data/"):
+def save_latents(dataset: CustomImageDataset, vae, params, config: trainConfig, output_dir="./data/", num_samples_per_image: int = 1):
     """
     Given a CustomImageDataset dataset, encodes images using the VAE
     saves the stored latents and classes. Allows every image to be 
     encoded in a single pass prior to training. 
+    num_samples_per_image: Number of latent samples to draw per input image.
     """
     os.makedirs(output_dir, exist_ok=True)   
     print(f"Saving files to: {os.path.abspath(output_dir)}")
@@ -203,51 +174,67 @@ def save_latents(dataset: CustomImageDataset, vae, params, config: trainConfig, 
         pin_memory=True
     )
 
-    latents = jnp.zeros((len(dataset), 32, 32, 4), dtype=jnp.float16)
+    total_latents_count = len(dataset) * num_samples_per_image
+    latents = jnp.zeros((total_latents_count, 4, 32, 32), dtype=jnp.float16)
     labels = []
 
-    for i, (batch_images, batch_labels) in tqdm(enumerate(dataloader), total=len(dataloader)):
-        # Ensure batch_images is a list of PIL images
-        if not isinstance(batch_images, list):
-            batch_images = [Image.fromarray(img) for img in batch_images]
+    current_latent_idx = 0
+    rng = jax.random.PRNGKey(0) # For VAE sampling
 
-        # Preprocess images in the batch
-        processed_images = []
-        for img in batch_images:
-            x = jnp.asarray(img).astype(jnp.float32) / 255.0
-            x = resize_and_center_crop(x)
-            x = (x - 0.5) / 0.5
-            assert x.shape == (256, 256, 3)
-            processed_images.append(x)
+    for i, (batch_images, batch_labels) in tqdm(enumerate(dataloader), total=len(dataloader)):
+        rng, vae_rng = jax.random.split(rng)
         
-        # Stack images into a single batch
-        batch_x = jnp.stack(processed_images).astype(jnp.float16)
-        batch_x = jnp.transpose(batch_x, (0, 3, 1, 2))
+        # batch_images are already preprocessed JAX arrays from CustomImageDataset
+        batch_x = jnp.transpose(batch_images, (0, 3, 1, 2)) # (B, H, W, C) -> (B, C, H, W)
 
         # Encode image
         distr = vae.apply({"params": params}, batch_x, method=vae.encode, deterministic=True)
-        latent = distr.latent_dist.mean
+        
+        # Add print statements here to inspect latent distribution stats
+        print(f"\nLatent distribution stats (mean, std, var) for batch {i}:")
+        print(f"  Mean of means: {distr.latent_dist.mean.mean().item():.4f}")
+        print(f"  Mean of stds: {distr.latent_dist.std.mean().item():.4f}")
+        print(f"  Mean of variances: {distr.latent_dist.variance().mean().item():.4f}")
+        print(f"  Min of means: {distr.latent_dist.mean.min().item():.4f}")
+        print(f"  Max of means: {distr.latent_dist.mean.max().item():.4f}")
 
-        # Calculate start and end indices for this batch
-        start_idx = i * config.batch_size
-        end_idx = start_idx + latent.shape[0]
+        # Sample num_samples_per_image times
+        # latent_samples will have shape (num_samples_per_image, batch_size, 4, 32, 32)
+        latent_samples = distr.latent_dist.sample(seed=vae_rng, sample_shape=(num_samples_per_image,)) 
+        
+        # Reshape to (batch_size * num_samples_per_image, 4, 32, 32)
+        latent_samples = latent_samples.transpose((1, 0, 2, 3, 4)).reshape(-1, 4, 32, 32) # JAX transpose
+        
+        num_current_latents = latent_samples.shape[0]
+        
+        latents = latents.at[current_latent_idx : current_latent_idx + num_current_latents].set(latent_samples)
+        current_latent_idx += num_current_latents
 
-        latents = latents.at[start_idx:end_idx].set(latent)
-        labels.extend(batch_labels)
+        # Extend labels by repeating each label num_samples_per_image times
+        for label in batch_labels:
+            labels.extend([label] * num_samples_per_image)
 
     # Save latents and labels as .npy files
     jnp.save(os.path.join(output_dir, "latents.npy"), latents)
     jnp.save(os.path.join(output_dir, "labels.npy"), jnp.array(labels))
-
+    print(f"Saved {len(latents)} latents to {output_dir}")
 
 
 if __name__=="__main__":
     print(jax.devices())
-    # gpu0 = jax.devices("cuda")[0]
-    # with jax.default_device(gpu0):
-    print(f"JAX is running on: {jax.default_backend()}")
+    # Ensure JAX uses GPU if available
+    if jax.devices("gpu"):
+        jax.default_device = jax.devices("gpu")[0]
+        print(f"JAX is running on: {jax.default_backend()} (GPU)")
+    else:
+        print(f"JAX is running on: {jax.default_backend()} (CPU)")
+
     train, val = load_data()
     vae, params  = get_sd_vae()
     config = trainConfig()
-    save_latents(train, vae, params, config, output_dir="./data/train_latent")
-    save_latents(val, vae, params, config, output_dir="./data/test_latent")
+    
+    print("Saving training set with 5 samples per image...")
+    save_latents(train, vae, params, config, output_dir="./data/train_latent_5_samples_per_image", num_samples_per_image=5)
+    
+    print("Saving validation set with 5 samples per image...")
+    save_latents(val, vae, params, config, output_dir="./data/test_latent_5_samples_per_image", num_samples_per_image=5)
