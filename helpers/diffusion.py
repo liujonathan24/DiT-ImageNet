@@ -10,4 +10,4 @@ class Diffusion():
         self.alpha_bars = jnp.cumprod(self.alphas)
 
     def get_alpha_bar(self, t):
-        return self.alpha_bar[t]
+        return self.alpha_bars[t]

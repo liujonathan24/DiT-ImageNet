@@ -41,8 +41,8 @@ class modelConfig:
 class trainConfig:
     def __init__(self):
         # Training details
-        self.batch_size = 12 # 256
-        self.epochs = 50 # 1m
+        self.batch_size = 64 # 256
+        self.epochs = 51 # 1m
 
         self.learning_rate = 1e-4
         self.ema = 0.9999
@@ -52,7 +52,7 @@ class trainConfig:
         self.linear_variance_max = 2e-2
 
         self.ckpt_frequency = 5
-        self.log_frequency = 1000
+        self.log_frequency = 2000
     
     def to_dict(self):
         return {

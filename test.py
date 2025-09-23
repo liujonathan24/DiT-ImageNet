@@ -42,6 +42,7 @@ def main(args):
 
     config = modelConfig()
     trainconfig = trainConfig()
+    trainconfig.batch_size = 12
     diffusion = Diffusion(trainconfig.linear_variance_min, trainconfig.linear_variance_max, trainconfig.tmax)
 
     os.makedirs(args.output_dir, exist_ok=True)
@@ -75,9 +76,15 @@ def main(args):
             im_arr = img[j]
 
             # rearrange to (H, W, C)
+            print(np.mean(im_arr))
+            print(np.min(im_arr))
+            print(np.max(im_arr))
+
+            print(np.var(im_arr))
+            print()
             im_arr = np.transpose(im_arr, (1, 2, 0))
-            im_arr = im_arr * 2 + 0.5
-            im_arr *= 255
+            #im_arr = im_arr * 2 + 0.5
+            im_arr *= 32 #255
             im_arr = im_arr.astype(np.uint8)
             print(im_arr.shape)
             # save

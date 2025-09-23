@@ -63,7 +63,7 @@ def main(args):
     trainconfig = trainConfig()
     modelconfig = modelConfig()
 
-    options = ocp.CheckpointManagerOptions(max_to_keep=3, save_interval_steps=2)
+    options = ocp.CheckpointManagerOptions(max_to_keep=5)
     mngr = ocp.CheckpointManager(models_dir, options=options)
 
     if args.resume:
@@ -118,7 +118,7 @@ def main(args):
                 
         epoch_time = time.time() - epoch_start_time
         logging.info(f"Epoch {epoch} finished in {epoch_time:.2f} seconds")
-        if epoch % trainconfig.ckpt_frequency == 0:
+        if (epoch + 1) % trainconfig.ckpt_frequency == 0:
             save_checkpoint(mngr, DiTmodel, optimizer, epoch, trainconfig, args)
         logging.info(f"Total time passed is: {time.time() - start_time} seconds")
     logging.info(f"Training completed in {time.time() - start_time} seconds.")
