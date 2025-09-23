@@ -1,12 +1,11 @@
 import numpy as np
 from PIL import Image
 import jax.numpy as jnp
-from helpers.config import trainConfig, testConfig
+from helpers.config import trainConfig, modelConfig
 from jax_dataloader import Dataset, DataLoader
 # from vae.import_sd_vae_torch import get_sd_vae
 from vae.import_sd_vae import get_sd_vae
-from helpers.preprocess_data_torch import load_latents
-from helpers.preprocess_data import load_data, return_dataloader
+from helpers.preprocess_data_torch import load_latents, load_data, return_dataloader
 import jax_dataloader as jdl
 import torch
 
@@ -22,51 +21,46 @@ if test_load_and_restore_image:
     #TODO: fix.
     train, valid = load_data()
     config = trainConfig()
-    dataset = return_dataloader(train, valid, config)
+    dataloader = return_dataloader(train, valid, config)
     
-
-    dataloader = DataLoader(
-        dataset=dataset,
-        batch_size=1,
-        num_workers=1,
-        pin_memory=True
-    )
 
     first_latent, first_label = next(iter(dataloader))
         
-        batch_x = torch.from_numpy(np.array(first_latent).astype(np.float32))
-        batch_x = torch.permute(batch_x, (0, 3, 1, 2))
+    batch_x = torch.from_numpy(np.array(first_latent).astype(np.float32))
+    batch_x = torch.permute(batch_x, (0, 3, 1, 2))
 
-        latent_dist = vae.encode(batch_x).latent_dist
-        
-        # Add print statements here to inspect latent distribution stats
-        print(f"\nLatent distribution stats (mean, std, var) for batch {i}:")
-        print(f"  Mean of means: {latent_dist.mean.mean().item():.4f}")
-        print(f"  Mean of stds: {latent_dist.std.mean().item():.4f}")
-        print(f"  Mean of variances: {latent_dist.variance().mean().item():.4f}")
-        print(f"  Min of means: {latent_dist.mean.min().item():.4f}")
-        print(f"  Max of means: {latent_dist.mean.max().item():.4f}")
-        
-        # Sample num_samples_per_image times
-        # latent_samples will have shape (num_samples_per_image, batch_size, 4, 32, 32)
-        # latent_samples = latent_dist.sample(sample_shape=(num_samples_per_image,)) 
-        samples = [latent_dist.sample() for _ in range(num_samples_per_image)]
-        latent_samples = torch.stack(samples)
+    latent_dist = vae.encode(batch_x).latent_dist
+    
+    # Add print statements here to inspect latent distribution stats
+    print(f"\nLatent distribution stats (mean, std, var) for batch {i}:")
+    print(f"  Mean of means: {latent_dist.mean.mean().item():.4f}")
+    print(f"  Mean of stds: {latent_dist.std.mean().item():.4f}")
+    print(f"  Min of means: {latent_dist.mean.min().item():.4f}")
+    print(f"  Max of means: {latent_dist.mean.max().item():.4f}")
+    
+    # Sample num_samples_per_image times
+    # latent_samples will have shape (num_samples_per_image, batch_size, 4, 32, 32)
+    # latent_samples = latent_dist.sample(sample_shape=(num_samples_per_image,)) 
+    samples = [latent_dist.sample() for _ in range(1)]
+    latent_samples = torch.stack(samples)
 
-        # Reshape to (batch_size * num_samples_per_image, 4, 32, 32)
-        latent_samples = latent_samples.permute(1, 0, 2, 3, 4).reshape(-1, 4, 32, 32)
-        
-        num_current_latents = latent_samples.shape[0]
-        
-        latents[current_latent_idx : current_latent_idx + num_current_latents] = latent_samples.detach().cpu().numpy()
-        current_latent_idx += num_current_latents
+    # Reshape to (batch_size * num_samples_per_image, 4, 32, 32)
+    latent_samples = latent_samples.permute(1, 0, 2, 3, 4).reshape(-1, 4, 32, 32)
+    
+    # RESTORE.
+    decoded_x = vae.apply(# .decode(first_image).sample.detach().numpy()
+                    {"params": params},
+                    latent_samples[0],
+                    method=vae.decode).sample
 
-        # Extend labels by repeating each label num_samples_per_image times
-        for label in batch_labels:
-            labels.extend([label] * num_samples_per_image)
 
-    np.save(os.path.join(output_dir, "latents.npy"), latents)
-    np.save(os.path.join(output_dir, "labels.npy"), np.array(labels))
+    # Convert back to [1, H, W, 3] and [0, 256]
+    decoded_x = jnp.transpose(decoded_x, (0, 2, 3, 1)) 
+    img_out = np.clip((np.array(decoded_x[0]) * 0.5 + 0.5) * 255, 0, 255).astype(np.uint8)
+    print(f"Final decoded shape: {decoded_x.shape}")
+
+    Image.fromarray(img_out).save("./vae/restored_imagenet.png")
+
     print(f"Saved {len(latents)} latents to {output_dir}")
 
 if test_restore_image:
@@ -138,3 +132,4 @@ if test_image:
     print(f"Final decoded shape: {decoded_x.shape}")
 
     Image.fromarray(img_out).save("./vae/reconstruction.png")
+

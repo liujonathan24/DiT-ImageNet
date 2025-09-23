@@ -161,6 +161,7 @@ def return_dataloader(train_dataset: CustomImageDataset,
     steps_per_epoch = len(train_loader)
     print(f"DataLoaders for created successfully.")
     print(f"{steps_per_epoch=}, val_steps: {len(valid_loader)}")
+    return train_loader, valid_loader
 
 def save_latents(dataset: CustomImageDataset, vae, config: trainConfig, output_dir="./data/", num_samples_per_image: int = 1):
     """
