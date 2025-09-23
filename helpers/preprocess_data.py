@@ -27,7 +27,7 @@ def resize_and_center_crop(
     returns: JAX array with shape (crop_size, crop_size, C) or (C, crop_size, crop_size)
     """
     # Convert to PIL for resizing/cropping, then back to JAX array
-    x = Image.fromarray((img * 255).astype(np.uint8)) # Assuming img is [0,1] float or [0,255] uint8
+    x = Image.fromarray((np.array(img) * 255).astype(np.uint8)) # Assuming img is [0,1] float or [0,255] uint8
     if x.mode != 'RGB':
         x = x.convert('RGB')
 
@@ -55,13 +55,43 @@ class CustomImageDataset(Dataset):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        path, target = self.samples[idx]
-        with open(path, 'rb') as f:
-            sample = Image.open(f).convert('RGB')
-            x = jnp.asarray(sample).astype(jnp.float32) / 255.0 # JAX array [0, 1]
-            x = resize_and_center_crop(x) # JAX array, cropped and resized
-            x = (x - 0.5) / 0.5 # JAX array [-1, 1]
-        return x, target
+        # idx can be a Python integer or a JAX array of indices (if num_workers > 0)
+        
+        if isinstance(idx, (jnp.ndarray, np.ndarray)):
+            # If idx is a JAX array, convert it to a list of Python integers
+            idx_list = idx.tolist()
+            
+            batch_images_np = []
+            batch_targets = []
+            for single_idx in idx_list:
+                path, target = self.samples[single_idx]
+                with open(path, 'rb') as f:
+                    sample = Image.open(f).convert('RGB')
+                    x = np.asarray(sample).astype(np.float32) # Return raw NumPy array [0, 255]
+                batch_images_np.append(x)
+                batch_targets.append(target)
+            
+            return np.stack(batch_images_np), np.array(batch_targets)
+        else:
+            # If idx is a single Python integer
+            path, target = self.samples[idx]
+            with open(path, 'rb') as f:
+                sample = Image.open(f).convert('RGB')
+                x = np.asarray(sample).astype(np.float32) # Return raw NumPy array [0, 255]
+            return x, target # Return NumPy array and target
+        idx_batch = idx
+        # idx_batch is a JAX array of indices
+        def process_single_item(single_idx):
+            path, target = self.samples[single_idx.item()] # Convert JAX scalar to Python int
+            with open(path, 'rb') as f:
+                sample = Image.open(f).convert('RGB')
+                x = jnp.asarray(sample).astype(jnp.float32) / 255.0
+                x = resize_and_center_crop(x)
+                x = (x - 0.5) / 0.5
+            return x, target
+        batch_x, batch_target = jax.vmap(process_single_item)(idx_batch)
+        
+        return batch_x, batch_target
 
 def load_data(number_classes=None):
     print("Loading data")
@@ -153,7 +183,7 @@ def return_dataloader(train_dataset: CustomImageDataset,
     )
     steps_per_epoch = len(train_loader)
     print(f"DataLoaders for created successfully.")
-    print(f"{steps_per_epoch=}, val_steps: {len(valid_loader)}")
+    return train_loader, valid_loader 
 
 def save_latents(dataset: CustomImageDataset, vae, params, config: trainConfig, output_dir="./data/", num_samples_per_image: int = 1):
     """
@@ -185,6 +215,7 @@ def save_latents(dataset: CustomImageDataset, vae, params, config: trainConfig, 
         rng, vae_rng = jax.random.split(rng)
         
         # batch_images are already preprocessed JAX arrays from CustomImageDataset
+        print(batch_images.shape)
         batch_x = jnp.transpose(batch_images, (0, 3, 1, 2)) # (B, H, W, C) -> (B, C, H, W)
 
         # Encode image
@@ -193,14 +224,14 @@ def save_latents(dataset: CustomImageDataset, vae, params, config: trainConfig, 
         # Add print statements here to inspect latent distribution stats
         print(f"\nLatent distribution stats (mean, std, var) for batch {i}:")
         print(f"  Mean of means: {distr.latent_dist.mean.mean().item():.4f}")
-        print(f"  Mean of stds: {distr.latent_dist.std.mean().item():.4f}")
-        print(f"  Mean of variances: {distr.latent_dist.variance().mean().item():.4f}")
+        print(f"  Mean of stds: {distr.latent_dist.std.mean().item():.4f}") 
         print(f"  Min of means: {distr.latent_dist.mean.min().item():.4f}")
         print(f"  Max of means: {distr.latent_dist.mean.max().item():.4f}")
 
         # Sample num_samples_per_image times
         # latent_samples will have shape (num_samples_per_image, batch_size, 4, 32, 32)
-        latent_samples = distr.latent_dist.sample(seed=vae_rng, sample_shape=(num_samples_per_image,)) 
+        print(help(distr.latent_dist.sample))
+        latent_samples = jnp.expand_dims(distr.latent_dist.sample(key=vae_rng), axis=0) #, shape=(num_samples_per_image,)) 
         
         # Reshape to (batch_size * num_samples_per_image, 4, 32, 32)
         latent_samples = latent_samples.transpose((1, 0, 2, 3, 4)).reshape(-1, 4, 32, 32) # JAX transpose
@@ -232,9 +263,9 @@ if __name__=="__main__":
     train, val = load_data()
     vae, params  = get_sd_vae()
     config = trainConfig()
+    config.batch_size = 1 
+    print("Saving training set with 1 samples per image...")
+    save_latents(train, vae, params, config, output_dir="./data/train_latent_1_samples_per_image", num_samples_per_image=1)
     
-    print("Saving training set with 5 samples per image...")
-    save_latents(train, vae, params, config, output_dir="./data/train_latent_5_samples_per_image", num_samples_per_image=5)
-    
-    print("Saving validation set with 5 samples per image...")
-    save_latents(val, vae, params, config, output_dir="./data/test_latent_5_samples_per_image", num_samples_per_image=5)
+    print("Saving validation set with 1 samples per image...")
+    save_latents(val, vae, params, config, output_dir="./data/test_latent_1_samples_per_image", num_samples_per_image=1)

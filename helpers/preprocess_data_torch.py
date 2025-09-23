@@ -197,7 +197,7 @@ def save_latents(dataset: CustomImageDataset, vae, config: trainConfig, output_d
         print(f"\nLatent distribution stats (mean, std, var) for batch {i}:")
         print(f"  Mean of means: {latent_dist.mean.mean().item():.4f}")
         print(f"  Mean of stds: {latent_dist.std.mean().item():.4f}")
-        print(f"  Mean of variances: {latent_dist.variance().mean().item():.4f}")
+        # print(f"  Mean of variances: {latent_dist.variances().mean().item():.4f}")
         print(f"  Min of means: {latent_dist.mean.min().item():.4f}")
         print(f"  Max of means: {latent_dist.mean.max().item():.4f}")
         
