@@ -15,7 +15,7 @@ import numpy as np
 
 
 def resize_and_center_crop(
-        img,
+        x,
         resize_short=256,
         crop_size=256,
     ):
@@ -23,10 +23,6 @@ def resize_and_center_crop(
     img: JAX or NumPy array with shape (H, W, C) and dtype float32/uint8
     returns: JAX array with shape (crop_size, crop_size, C) or (C, crop_size, crop_size)
     """
-    x = Image.fromarray((img * 255).astype(np.uint8))
-    if x.mode != 'RGB':
-        x = x.convert('RGB')
-
     # scale so that the shorter side == resize_short
     short = min(x.size)
     scale = float(resize_short) / float(short)
@@ -83,9 +79,8 @@ def crop_data(number_classes=None):
                         path = os.path.join(class_dir, fname)
                         # Crop and rewrite file.
                         with open(path, 'rb') as f:
-                            sample = Image.open(f).convert('RGB')
-                            x = np.asarray(sample).astype(np.float32) 
-                            x = resize_and_center_crop(x).astype(np.uint8)
+                            sample = Image.open(f)
+                            x = resize_and_center_crop(x)
                         Image.fromarray(x).save(path)
                         item = (path, class_idx)
                         train_samples.append(item)
@@ -101,7 +96,7 @@ def crop_data(number_classes=None):
                     path = os.path.join(class_dir, fname)
                     # Crop and rewrite file.
                     with open(path, 'rb') as f:
-                        sample = Image.open(f).convert('RGB')
+                        sample = Image.open(f)
                         x = np.asarray(sample).astype(np.float32) 
                         x = resize_and_center_crop(x).astype(np.uint8)
                     Image.fromarray(x).save(path)
