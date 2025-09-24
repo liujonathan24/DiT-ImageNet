@@ -79,19 +79,6 @@ class CustomImageDataset(Dataset):
                 sample = Image.open(f).convert('RGB')
                 x = np.asarray(sample).astype(np.float32) # Return raw NumPy array [0, 255]
             return x, target # Return NumPy array and target
-        idx_batch = idx
-        # idx_batch is a JAX array of indices
-        def process_single_item(single_idx):
-            path, target = self.samples[single_idx.item()] # Convert JAX scalar to Python int
-            with open(path, 'rb') as f:
-                sample = Image.open(f).convert('RGB')
-                x = jnp.asarray(sample).astype(jnp.float32) / 255.0
-                x = resize_and_center_crop(x)
-                x = (x - 0.5) / 0.5
-            return x, target
-        batch_x, batch_target = jax.vmap(process_single_item)(idx_batch)
-        
-        return batch_x, batch_target
 
 def load_data(number_classes=None):
     print("Loading data")

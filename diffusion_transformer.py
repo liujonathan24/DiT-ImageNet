@@ -31,7 +31,7 @@ class MHA(nnx.Module):
         return values, attention                 # attention: [h, L, L]
   
     def scaled_dot_product(self, q, k, v):
-        """Implements scaled dot product with Pyjnp's functionality"""
+        """Implements scaled dot product with jax.numpy's functionality"""
         # q, k, v: [num_heads, L, d_head]
         d = q.shape[-1]
         scale = 1.0 / jnp.sqrt(d)

@@ -22,39 +22,6 @@ else:
 torch.cuda.empty_cache()
 print(f"✅ Using device: {DEVICE}")
 
-# Data loading class (CustomImageDataset) inspired from https://www.kaggle.com/code/liucong12601/dinov2-imagenet-training
-# Heavily modified the code to become load_data & return_dataloader functions, including the use of jax dataloader instead of torch
-# The rest is my code
-
-def resize_and_center_crop(
-    img,
-    resize_short=256,
-    crop_size=256,
-    method="linear"
-):
-    """
-    img: JAX or NumPy array with shape (H, W, C) and dtype float32/uint8
-    returns: JAX array with shape (crop_size, crop_size, C) or (C, crop_size, crop_size)
-    """
-    x = Image.fromarray((img * 255).astype(np.uint8))
-    if x.mode != 'RGB':
-        x = x.convert('RGB')
-
-    # scale so that the shorter side == resize_short
-    short = min(x.size)
-    scale = float(resize_short) / float(short)
-    new_h = max(1, int(round(x.size[1] * scale)))
-    new_w = max(1, int(round(x.size[0] * scale)))
-
-    x_resized = torchvision.transforms.Resize((new_h, new_w)).forward(x)
-
-    # center crop crop_size x crop_size
-    top = max(0, (new_h - crop_size) // 2)
-    left = max(0, (new_w - crop_size) // 2)
-    x_cropped = x_resized.crop((left, top, left + crop_size, top + crop_size))
-    
-    return np.array(x_cropped)
-
 class CustomImageDataset(Dataset):
     def __init__(self, samples, transform=None):
         self.samples = samples
@@ -64,13 +31,29 @@ class CustomImageDataset(Dataset):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        path, target = self.samples[idx]
-        with open(path, 'rb') as f:
-            sample = Image.open(f).convert('RGB')
-            x = np.asarray(sample).astype(np.float32) / 255.0
-            x = resize_and_center_crop(x)
-            x = (x - 0.5) / 0.5
-        return x, target
+        # path, target = self.samples[idx]
+        # with open(path, 'rb') as f:
+        #     sample = Image.open(f).convert('RGB')
+        #     x = np.asarray(sample).astype(np.float32) 
+        #     x /= 255.0
+        #     x = (x - 0.5) / 0.5
+        # return x, target
+
+        idx_list = idx.tolist()
+            
+        batch_images_np = []
+        batch_targets = []
+        for single_idx in idx_list:
+            path, target = self.samples[single_idx]
+            with open(path, 'rb') as f:
+                sample = Image.open(f).convert('RGB')
+                x = np.asarray(sample).astype(np.float32)
+                x /= 255.0
+                x = (x - 0.5) / 0.5
+            batch_images_np.append(x)
+            batch_targets.append(target)
+        
+        return np.stack(batch_images_np), np.array(batch_targets)
 
 def load_data(number_classes=None):
     print("Loading data")
@@ -187,7 +170,8 @@ def save_latents(dataset: CustomImageDataset, vae, config: trainConfig, output_d
 
     current_latent_idx = 0
     for i, batch in tqdm(enumerate(dataloader), total=len(dataloader)):
-        batch_images, batch_labels = batch
+        batch_images, batch_labels = batch # Images = []
+        print(batch_images.shape)
         
         batch_x = torch.from_numpy(np.array(batch_images).astype(np.float32)).to(DEVICE)
         batch_x = torch.permute(batch_x, (0, 3, 1, 2))

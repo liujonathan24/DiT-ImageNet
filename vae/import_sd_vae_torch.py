@@ -18,7 +18,7 @@ def get_sd_vae(cache_dir: str = "./vae/sd-vae-ft-ema", dtype=jnp.float32):
     if _has_flax_checkpoint(cache_dir):
         print("Local copy detected.")
         vae = AutoencoderKL.from_pretrained(cache_dir)
-        return vae, None
+        return vae
 
     print("install")
     # If model architecture & weights are not downloaded, downloads it (converts pt -> flax)
@@ -26,9 +26,9 @@ def get_sd_vae(cache_dir: str = "./vae/sd-vae-ft-ema", dtype=jnp.float32):
         "stabilityai/sd-vae-ft-ema",
     )
     vae.save_pretrained(cache_dir)  # writes diffusion_flax_model.msgpack + config.json
-    return vae, None
+    return vae
 
 
 if __name__=="__main__":
-    vae, params = get_sd_vae("./vae/sd-vae-ft-ema")
+    vae = get_sd_vae("./vae/sd-vae-ft-ema")
 
