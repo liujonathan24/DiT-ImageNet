@@ -26,7 +26,7 @@ def main(args):
         gpu_device = jax.devices("cpu")[0]
     assert gpu_device != None
 
-    sd_vae, _ = get_sd_vae()
+    sd_vae = get_sd_vae()
     
 
     modelconfig = modelConfig()

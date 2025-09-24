@@ -25,7 +25,7 @@ from flax import nnx
 from helpers.config import modelConfig, trainConfig
 import optax
 import argparse
-from helpers.preprocess_data_torch import load_latents, return_dataloader
+from helpers.preprocess_data_torch import load_latents, return_dataloader, load_data
 from tqdm import tqdm
 import os
 from glob import glob
@@ -60,16 +60,14 @@ def main(args):
     else:
         gpu_device = None
     assert gpu_device != None
-    assert args.model_config == "DiT-S", "Currently, the only model config implemented is DiT-S."
+    
 
-    # Set up logging and log initial experiment information.
-    setup_logging(experiment_path)
-    logging.info(f"Starting experiment at {experiment_path}")
-    logging.info(f"Arguments: {args}")
 
     # Load configurations
     trainconfig = trainConfig()
     modelconfig = modelConfig()
+    trainconfig.batch_size = 16 #TODO: remove
+    trainconfig.ckpt_frequency = 2
     diffusion = Diffusion(trainconfig.linear_variance_min, trainconfig.linear_variance_max, trainconfig.tmax)
 
     # Load DiT Model
@@ -82,52 +80,67 @@ def main(args):
         logging.info("Model restored from checkpoint.")
         logging.info(f"Restored epoch: {extra_params['epoch']}")
     else:
-        os.makedirs(args.results_dir, exist_ok=True)
-        experiment_number = len(glob(f"{args.results_dir}/*"))
-        experiment_path = os.path.join(args.results_dir, f"experiment-v{experiment_number}")
+        os.makedirs('results', exist_ok=True)
+        experiment_number = len(glob(f"results/*"))
+        experiment_path = os.path.join('results', f"experiment-v{experiment_number}")
         models_dir = os.path.abspath(os.path.join(experiment_path, "models"))
         os.makedirs(models_dir)
 
         DiTmodel = DiffusionTransformer(modelconfig)
         start_epoch = 0
     
+    # Set up logging and log initial experiment information.
+    setup_logging(experiment_path)
+    logging.info(f"Starting experiment at {experiment_path}")
+    logging.info(f"Arguments: {args}")
+    
     # Manage helper models, optimizers, checkpointers.
     options = ocp.CheckpointManagerOptions(max_to_keep=5)
     mngr = ocp.CheckpointManager(models_dir, options=options)
     opt = optax.adamw(learning_rate=trainconfig.learning_rate)
     optimizer = nnx.Optimizer(DiTmodel, opt, wrt=nnx.Param)
-    sd_vae = get_sd_vae()
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    sd_vae = get_sd_vae().to(device)
 
-    train_dataloader, test_dataloader = return_dataloader()
+    train_dataset, valid_dataset = load_data()
+    train_dataloader, test_dataloader = return_dataloader(train_dataset, valid_dataset, trainconfig)
 
 
     random_key = jax.random.PRNGKey(0)
-    test_restore = True
+    test_restore = False
     for epoch in range(start_epoch, trainconfig.epochs):
         logging.info(f"Starting epoch {epoch}")
         epoch_start_time = time.time()
         running_loss = 0.0
         for i, (batch, labels) in enumerate(tqdm(train_dataloader)):
-            print(batch.shape)
+            batch = np.transpose(batch, (0, 3, 1, 2)).to(device)
+            #print(batch.shape)
             assert batch.shape == (trainconfig.batch_size, 3, 256, 256)
 
             # Encode using sd_vae:
             batch = 0.18215 * sd_vae.encode(batch).latent_dist.sample()
+            #print(batch.shape)
             assert batch.shape == (trainconfig.batch_size, 4, 32, 32)
 
 
             # IF testing restoration.
             if test_restore:
-                restored = sd_vae.decode(batch/0.18215).sample
-                im_arr = np.transpose(restored, (1, 2, 0))
+                restored = sd_vae.decode(batch/0.18215).sample.detach().cpu().numpy()
+                im_arr = np.transpose(restored, (0, 2, 3, 1))
+                print(im_arr.shape)
+                im_arr = im_arr[0,:,:,:]
+                im_arr = np.squeeze(im_arr)
+                print(im_arr.shape)
         
                 # VAE output is ~[-1, 1], convert to [0, 255] for saving
                 im_arr = np.clip(im_arr, -1.0, 1.0)
                 im_arr = (im_arr + 1) / 2.0
                 im_arr = (im_arr * 255).astype(np.uint8)
-                Image.fromarray(im_arr).save("tmp_restored.png")
+                path = os.path.abspath(os.path.join(experiment_path, "tmp_restored.png"))
+                Image.fromarray(im_arr).save(path) #os.path.join(experiment_path, "tmp_restored.png"))
                 assert 1 == 2 
 
+            batch = jnp.array(batch.detach().cpu().numpy())
             # Sample noise & predict:
             iter_key, random_key = jax.random.split(random_key)
             t_key, noise_key = jax.random.split(iter_key)

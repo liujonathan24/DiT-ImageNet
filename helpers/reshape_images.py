@@ -36,7 +36,7 @@ def resize_and_center_crop(
     left = max(0, (new_w - crop_size) // 2)
     x_cropped = x_resized.crop((left, top, left + crop_size, top + crop_size))
     
-    return np.array(x_cropped)
+    return np.array(x_cropped.convert("RGB"))
 
 def crop_data(number_classes=None):
     print("Crop data")
@@ -80,11 +80,13 @@ def crop_data(number_classes=None):
                         # Crop and rewrite file.
                         with open(path, 'rb') as f:
                             sample = Image.open(f)
-                            x = resize_and_center_crop(x)
+                            x = resize_and_center_crop(sample) 
+                        #path2 = os.path.join(class_dir, "1"+fname)
                         Image.fromarray(x).save(path)
+                        #assert 1 == 2
                         item = (path, class_idx)
                         train_samples.append(item)
-
+    print("Processing validation samples")
     # --- Manually build the list of validation samples ---
     valid_samples = []
     for class_name in selected_class_dirs:
@@ -97,8 +99,7 @@ def crop_data(number_classes=None):
                     # Crop and rewrite file.
                     with open(path, 'rb') as f:
                         sample = Image.open(f)
-                        x = np.asarray(sample).astype(np.float32) 
-                        x = resize_and_center_crop(x).astype(np.uint8)
+                        x = resize_and_center_crop(sample)
                     Image.fromarray(x).save(path)
                     item = (path, class_idx)
                     valid_samples.append(item)

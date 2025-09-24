@@ -52,7 +52,6 @@ class MLP(nnx.Module):
         self.fc1 = nnx.Linear(config.DiT_hidden_size, config.MLP_hidden_size, rngs=nnx.Rngs(0))
         self.act = lambda t: nnx.gelu(t, approximate=True)
         self.fc2 = nnx.Linear(config.MLP_hidden_size, config.DiT_hidden_size, rngs=nnx.Rngs(0))
-        # TODO: Initialize to identity?
     
     def __call__(self, x):
         return self.forward(x)
@@ -62,6 +61,10 @@ class MLP(nnx.Module):
         x = self.act(x)
         x = self.fc2(x)
         return x
+
+def zero_init(key, shape, dtype):
+    value = jnp.zeros(shape)
+    return value
 
 class DiTBlock(nnx.Module):
     def __init__(self, config: modelConfig):
@@ -76,7 +79,7 @@ class DiTBlock(nnx.Module):
         self.MLP = MLP(config) 
 
         # MLP for conditioning info
-        self.cLinWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size * 6, rngs=nnx.Rngs(0))
+        self.cLinWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size * 6, rngs=nnx.Rngs(0), kernel_init=zero_init)
     
     def __call__(self, x, conditioning):
         """Uses vmap to process batched inputs."""
@@ -106,12 +109,12 @@ class DiTFinalLayer(nnx.Module):
         
         self.LayerNorm = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(0))
         self.linear = nnx.Linear(config.DiT_hidden_size, config.patch_size**2*config.output_dim, rngs=nnx.Rngs(0)) 
-        self.linWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size*2, rngs=nnx.Rngs(0))
+        self.linWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size*2, rngs=nnx.Rngs(0), kernel_init=zero_init)
 
     def forward(self, x, conditioning):
         x = self.LayerNorm(x)
         alpha, beta = self.linWeights(conditioning).reshape(2, -1)
-        x = alpha * x + beta
+        x = (1+alpha) * x + beta
         x = self.linear(x)
         return x
 

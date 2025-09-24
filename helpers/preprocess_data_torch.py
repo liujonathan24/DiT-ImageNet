@@ -31,13 +31,13 @@ class CustomImageDataset(Dataset):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        # path, target = self.samples[idx]
-        # with open(path, 'rb') as f:
-        #     sample = Image.open(f).convert('RGB')
-        #     x = np.asarray(sample).astype(np.float32) 
-        #     x /= 255.0
-        #     x = (x - 0.5) / 0.5
-        # return x, target
+        path, target = self.samples[idx]
+        with open(path, 'rb') as f:
+            sample = Image.open(f).convert('RGB')
+            x = np.asarray(sample).astype(np.float32) 
+            x /= 255.0
+            x = (x - 0.5) / 0.5
+        return x, target
 
         idx_list = idx.tolist()
             
