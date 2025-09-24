@@ -1,0 +1,91 @@
+from diffusion_transformer import DiffusionTransformer
+import jax 
+import jax.numpy as jnp
+from flax import nnx
+from helpers.config import modelConfig, trainConfig
+import optax
+import argparse
+from helpers.preprocess_data_torch import load_latents
+from tqdm import tqdm
+import os
+import optax
+import orbax.checkpoint as ocp
+import time
+import jax_dataloader as jdl
+from helpers.diffusion import Diffusion
+from vae.import_sd_vae_torch import get_sd_vae
+from PIL import Image
+import numpy as np
+import torch
+from helpers.porting import restore_checkpoint
+from diffusion_transformer import DiffusionTransformer
+import jax 
+import jax.numpy as jnp
+from flax import nnx
+from helpers.config import modelConfig, trainConfig
+import optax
+import argparse
+from helpers.preprocess_data_torch import load_latents, return_dataloader, load_data
+from tqdm import tqdm
+import os
+from glob import glob
+from copy import deepcopy
+import optax
+import orbax.checkpoint as ocp
+import time
+import jax_dataloader as jdl
+import json
+from helpers.porting import save_checkpoint, restore_checkpoint
+from helpers.logging_utils import setup_logging
+from helpers.diffusion import Diffusion
+import logging
+
+def main(args):
+    # Load configurations
+    trainconfig = trainConfig()
+    trainconfig.batch_size = 1
+
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    sd_vae = get_sd_vae()
+    sd_vae.eval()
+    sd_vae.to(device)
+
+    train_dataset, valid_dataset = load_data()
+    train_dataloader, test_dataloader = return_dataloader(train_dataset, valid_dataset, trainconfig)
+
+    test_restore = False
+    output_latents = []
+    for i, (batch, labels) in enumerate(tqdm(train_dataloader)):
+        for j in range(5):
+            batch = torch.squeeze(batch)
+            batch = np.transpose(batch, (2, 0, 1)).to(device)
+            #print(batch.shape)
+            assert batch.shape == (3, 256, 256)
+
+            # Encode using sd_vae:
+            batch = 0.18215 * sd_vae.encode(batch).latent_dist.sample()
+            #print(batch.shape)
+            assert batch.shape == (4, 32, 32)
+            output_latents.append(batch.cpu().numpy())
+
+            # IF testing restoration.
+            if test_restore:
+                restored = sd_vae.decode(batch/0.18215).sample.cpu().numpy()
+                im_arr = np.transpose(restored, (1, 2, 0))
+                print(im_arr.shape)
+                im_arr = im_arr[0,:,:,:]
+                im_arr = np.squeeze(im_arr)
+                print(im_arr.shape)
+        
+                # VAE output is ~[-1, 1], convert to [0, 255] for saving
+                im_arr = np.clip(im_arr, -1.0, 1.0)
+                im_arr = (im_arr + 1) / 2.0
+                im_arr = (im_arr * 255).astype(np.uint8)
+                path = os.path.abspath("tmp_restored.png")
+                Image.fromarray(im_arr).save(path) 
+                assert 1 == 2 
+
+    output_latents = np.stack(output_latents)
+
+if __name__ == "__main__":
+    main()
