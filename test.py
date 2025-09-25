@@ -57,14 +57,14 @@ def main(args):
             
             # t = jnp.ones((trainconfig.batch_size)) * t
             # print(x_t.shape, t.shape)
-            t_vec = jnp.ones((trainconfig.batch_size)) * t
+            t_vec = jnp.ones((trainconfig.batch_size)) * (t-1)
             prediction = model(x_t, t_vec)
-            modified_x_t = x_t - prediction * (1-diffusion.alphas[t])/(jnp.sqrt(1-diffusion.alpha_bars[t]))
-            
-            modified_x_t *= 1/jnp.sqrt(diffusion.alphas[t])
+            modified_x_t = x_t - prediction * (1-diffusion.alphas[t-1])/(jnp.sqrt(1-diffusion.alpha_bars[t-1]))
+
+            modified_x_t *= 1/jnp.sqrt(diffusion.alphas[t-1])
 
             z_t = jax.random.normal(rngs, shape=(trainconfig.batch_size, config.image_channels, config.input_size, config.input_size)) if t >1 else jnp.zeros((trainconfig.batch_size, config.image_channels, config.input_size, config.input_size))
-            noise_t = jnp.sqrt(diffusion.variances[t]) * z_t
+            noise_t = jnp.sqrt(diffusion.variances[t-1]) * z_t
 
             x_t = modified_x_t + noise_t
         # Decode:
