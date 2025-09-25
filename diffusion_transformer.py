@@ -4,14 +4,53 @@ from jax import vmap
 from flax import nnx
 from helpers.config import modelConfig
 
-class MHA(nnx.Module):
-    def __init__(self, config: modelConfig):
+# class MHA(nnx.Module):
+#     def __init__(self, config: modelConfig):
         
+#         self.length = config.token_length
+#         self.hidden = config.DiT_hidden_size
+#         self.num_heads = config.n_heads
+        
+#         self.d_head = self.hidden // self.num_heads
+#         self.qkv_proj = nnx.Linear(self.hidden, 3 * self.hidden, rngs=nnx.Rngs(0))
+#         self.out_proj = nnx.Linear(self.hidden, self.hidden, rngs=nnx.Rngs(0))
+
+#     def __call__(self, x):
+#         return self.forward(x)
+
+#     def forward(self, x):
+#         # x: [L, Hidden]
+#         y = self.qkv_proj(x)                     # [L, 3H]
+#         y = y.reshape(self.length, 3, self.num_heads, self.d_head)   # [L, 3, head, d]
+#         y = jnp.transpose(y, (1, 2, 0, 3))       # [3, h, L, d]
+#         q, k, v = y[0], y[1], y[2]               # each [h, L, d]
+
+#         values, attention = self.scaled_dot_product(q, k, v)  # values: [h, L, d]
+#         values = jnp.transpose(values, (1, 0, 2)).reshape(self.length, self.hidden)  # [L, H]
+#         values = self.out_proj(values)           # [L, H]
+#         return values, attention                 # attention: [h, L, L]
+  
+#     def scaled_dot_product(self, q, k, v):
+#         """Implements scaled dot product with jax.numpy's functionality"""
+#         # q, k, v: [num_heads, L, d_head]
+#         d = q.shape[-1]
+#         scale = 1.0 / jnp.sqrt(d)
+#         # [num_heads, L, L]
+#         attn_logits = jnp.einsum('hld,hmd->hlm', q, k) * scale
+#         attn = jax.nn.softmax(attn_logits, axis=-1)
+#         # [num_heads, L, d_head]
+#         out = jnp.einsum('hlm,hmd->hld', attn, v)
+#         return out, attn
+
+
+
+class MHA(nnx.Module):
+    def __init__(self, config: "modelConfig"):
         self.length = config.token_length
         self.hidden = config.DiT_hidden_size
         self.num_heads = config.n_heads
-        
         self.d_head = self.hidden // self.num_heads
+
         self.qkv_proj = nnx.Linear(self.hidden, 3 * self.hidden, rngs=nnx.Rngs(0))
         self.out_proj = nnx.Linear(self.hidden, self.hidden, rngs=nnx.Rngs(0))
 
@@ -19,27 +58,39 @@ class MHA(nnx.Module):
         return self.forward(x)
 
     def forward(self, x):
-        # x: [L, Hidden]
-        y = self.qkv_proj(x)                     # [L, 3H]
-        y = y.reshape(self.length, 3, self.num_heads, self.d_head)   # [L, 3, head, d]
-        y = jnp.transpose(y, (1, 2, 0, 3))       # [3, h, L, d]
-        q, k, v = y[0], y[1], y[2]               # each [h, L, d]
+        assert x.shape[0] == self.length, (
+            f"Expected sequence length is {self.length}, instead have {x.shape[0]}"
+        )
 
-        values, attention = self.scaled_dot_product(q, k, v)  # values: [h, L, d]
+        # Project to QKV
+        y = self.qkv_proj(x)                                # [L, 3H]
+        y = y.reshape(self.length, 3, self.num_heads, self.d_head)  # [L, 3, h, d]
+        y = jnp.transpose(y, (1, 2, 0, 3))                  # [3, h, L, d]
+        q, k, v = y[0], y[1], y[2]                          # each [h, L, d]
+
+        # Scaled dot-product attention
+        values, attn = self.scaled_dot_product(q, k, v)     # values: [h, L, d]
+
+        # Concatenate heads
         values = jnp.transpose(values, (1, 0, 2)).reshape(self.length, self.hidden)  # [L, H]
-        values = self.out_proj(values)           # [L, H]
-        return values, attention                 # attention: [h, L, L]
-  
+
+        # project back to hidden dim
+        out = self.out_proj(values)                         # [L, H]
+        return out, attn                                    # attn: [h, L, L]
+
     def scaled_dot_product(self, q, k, v):
-        """Implements scaled dot product with jax.numpy's functionality"""
-        # q, k, v: [num_heads, L, d_head]
+        """Scaled dot-product attention."""
         d = q.shape[-1]
         scale = 1.0 / jnp.sqrt(d)
-        # [num_heads, L, L]
-        attn_logits = jnp.einsum('hld,hmd->hlm', q, k) * scale
-        attn = jax.nn.softmax(attn_logits, axis=-1)
-        # [num_heads, L, d_head]
-        out = jnp.einsum('hlm,hmd->hld', attn, v)
+
+        # Compute attention logits
+        attn_logits = jnp.einsum("hld,hmd->hlm", q, k) * scale  # [h, L, L]
+
+        # Normalize
+        attn = jax.nn.softmax(attn_logits, axis=-1)             # [h, L, L]
+
+        # Weighted sum of values
+        out = jnp.einsum("hlm,hmd->hld", attn, v)               # [h, L, d]
         return out, attn
 
 class MLP(nnx.Module):
