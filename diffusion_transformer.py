@@ -86,9 +86,9 @@ class DiTBlock(nnx.Module):
         return self.forward(x, conditioning)
 
     def forward(self, x, conditioning):
-        gamma1, beta1, alpha1, gamma2, beta2, alpha2 = self.cLinWeights(conditioning).reshape((6, -1))
+        gamma1, beta1, alpha1, gamma2, beta2, alpha2 = self.cLinWeights(nnx.silu(conditioning)).reshape((6, -1))
         tmp = self.LayerNorm1(x)
-        tmp = gamma1*tmp + beta1 
+        tmp = (gamma1+1)*tmp + beta1 
         tmp, attn = self.MHA(tmp)
         tmp = alpha1*tmp
 
@@ -96,7 +96,7 @@ class DiTBlock(nnx.Module):
         x = tmp
 
         tmp = self.LayerNorm2(tmp)
-        tmp = gamma2*tmp + beta2 
+        tmp = (1+gamma2)*tmp + beta2 
         tmp = self.MLP(tmp)
         tmp = alpha2*tmp
 
@@ -113,7 +113,7 @@ class DiTFinalLayer(nnx.Module):
 
     def forward(self, x, conditioning):
         x = self.LayerNorm(x)
-        alpha, beta = self.linWeights(conditioning).reshape(2, -1)
+        alpha, beta = self.linWeights(nnx.silu(conditioning)).reshape(2, -1)
         x = (1+alpha) * x + beta
         x = self.linear(x)
         return x
@@ -164,7 +164,7 @@ class DiffusionTransformer(nnx.Module):
         self.mapper = DiTPatch(config)
         self.time_MLP = MLP(config)
 
-        self.pos_embed = nnx.Static(self.pos_embed()) #TODO: freeze these values.
+        self.pos_embed = self.pos_embed() 
     
     def pos_embed(self):
         # Implements: pos / 1000^(2i/d_model)
@@ -208,7 +208,7 @@ class DiffusionTransformer(nnx.Module):
         y: (N,) tensor of class labels
         """
         x = self.mapper.convert_to_stream(x) # Convert [4, 32, 32] to [4*32*32] & applies MLP
-        x = x + self.pos_embed.value # Adds sinusoidal PE
+        x = x + self.pos_embed # Adds sinusoidal PE
         
         conditioning = self.time_MLP(self.time_embed(timestep)) # Embeds single timestep to [hidden_dim]
 
