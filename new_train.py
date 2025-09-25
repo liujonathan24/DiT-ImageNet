@@ -1,4 +1,5 @@
 from diffusion_transformer import DiffusionTransformer
+from jax_dataloader import Dataset, DataLoader
 import jax 
 import jax.numpy as jnp
 from flax import nnx
@@ -39,6 +40,7 @@ from helpers.porting import save_checkpoint, restore_checkpoint
 from helpers.logging_utils import setup_logging
 from helpers.diffusion import Diffusion
 import logging
+from jax_dataloader.datasets import ArrayDataset
 
 @nnx.jit  # automatic state management for JAX transforms
 def train_step(model, optimizer, x, t, y):
@@ -66,8 +68,10 @@ def main(args):
     # Load configurations
     trainconfig = trainConfig()
     modelconfig = modelConfig()
-    trainconfig.batch_size = 16 #TODO: remove
-    trainconfig.ckpt_frequency = 2
+    trainconfig.batch_size = 256 #TODO: remove
+    trainconfig.log_frequency = 500
+    trainconfig.epochs = 1500
+
     diffusion = Diffusion(trainconfig.linear_variance_min, trainconfig.linear_variance_max, trainconfig.tmax)
 
     # Load DiT Model
@@ -102,9 +106,36 @@ def main(args):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     sd_vae = get_sd_vae().to(device)
 
-    train_dataset, valid_dataset = load_data()
-    train_dataloader, test_dataloader = return_dataloader(train_dataset, valid_dataset, trainconfig)
+    # train_dataset, valid_dataset = load_data()
+    # train_dataloader, test_dataloader = return_dataloader(train_dataset, valid_dataset, trainconfig)
 
+    # random_key = jax.random.PRNGKey(0)
+    # test_restore = False
+    # for epoch in range(start_epoch, trainconfig.epochs):
+    #     logging.info(f"Starting epoch {epoch}")
+    #     epoch_start_time = time.time()
+    #     running_loss = 0.0
+    #     for i, (batch, labels) in enumerate(tqdm(train_dataloader)):
+    #         batch = np.transpose(batch, (0, 3, 1, 2)).to(device)
+    #         #print(batch.shape)
+    #         assert batch.shape == (trainconfig.batch_size, 3, 256, 256)
+
+            # Encode using sd_vae:
+    #         batch = 0.18215 * sd_vae.encode(batch).latent_dist.sample()
+    #         #print(batch.shape)
+    #         assert batch.shape == (trainconfig.batch_size, 4, 32, 32)
+    
+    train_dataset = jnp.array(np.load('data/1_train_latents.npy'))
+    print(train_dataset.shape)
+    train_dataset = ArrayDataset(train_dataset)
+    train_dataloader = DataLoader(
+        dataset=train_dataset,
+        backend='jax',
+        batch_size=trainconfig.batch_size,
+        shuffle=True,
+        num_workers=2,
+        pin_memory=True
+    ) 
 
     random_key = jax.random.PRNGKey(0)
     test_restore = False
@@ -112,15 +143,14 @@ def main(args):
         logging.info(f"Starting epoch {epoch}")
         epoch_start_time = time.time()
         running_loss = 0.0
-        for i, (batch, labels) in enumerate(tqdm(train_dataloader)):
-            batch = np.transpose(batch, (0, 3, 1, 2)).to(device)
-            #print(batch.shape)
-            assert batch.shape == (trainconfig.batch_size, 3, 256, 256)
+        for i, (batch) in enumerate(tqdm(train_dataloader)):
+            batch = batch[0]  
+            # print(batch.shape)
+           
 
             # Encode using sd_vae:
-            batch = 0.18215 * sd_vae.encode(batch).latent_dist.sample()
-            #print(batch.shape)
-            assert batch.shape == (trainconfig.batch_size, 4, 32, 32)
+            # batch = 0.18215 * sd_vae.encode(batch).latent_dist.sample()
+            # assert batch.shape == (trainconfig.batch_size, 4, 32, 32)
 
 
             # IF testing restoration.
@@ -140,7 +170,7 @@ def main(args):
                 Image.fromarray(im_arr).save(path) #os.path.join(experiment_path, "tmp_restored.png"))
                 assert 1 == 2 
 
-            batch = jnp.array(batch.detach().cpu().numpy())
+            batch = jnp.array(batch)
             # Sample noise & predict:
             iter_key, random_key = jax.random.split(random_key)
             t_key, noise_key = jax.random.split(iter_key)
@@ -151,7 +181,7 @@ def main(args):
             noise = jnp.sqrt(1 - alpha_bar_t) * epsilon
             noisy_batch = batch * jnp.sqrt(alpha_bar_t) + noise
 
-            loss = train_step(DiTmodel, optimizer, noisy_batch, t, noise)
+            loss = train_step(DiTmodel, optimizer, noisy_batch, t, epsilon)
 
             running_loss += loss.item()
 

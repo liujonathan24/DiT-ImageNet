@@ -26,7 +26,11 @@ def main(args):
         gpu_device = jax.devices("cpu")[0]
     assert gpu_device != None
 
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
     sd_vae = get_sd_vae()
+    sd_vae.eval()
+    sd_vae.to(device)
+
     
 
     modelconfig = modelConfig()
@@ -64,13 +68,15 @@ def main(args):
 
             x_t = modified_x_t + noise_t
         # Decode:
-        # x_t /= 0.18215
+        x_t /= 0.18215
         print(f"Final shape is {x_t.shape}") # (12, 4, 32, 32)
         print(f"Latent stats before decoding (mean, min, max, var):")
         print(jnp.mean(x_t), jnp.min(x_t), jnp.max(x_t), jnp.var(x_t))
-        img = sd_vae.decode(torch.tensor(np.array(x_t))).sample
+        
+        with torch.no_grad():
+            img = sd_vae.decode(torch.tensor(np.array(x_t)).to(device)).sample
         print(f"Decoded image shape: {img.shape}")
-        img = img.detach().cpu().numpy()
+        img = img.cpu().numpy()
 
         for j in range(img.shape[0]):
             # take one image (3, H, W)
