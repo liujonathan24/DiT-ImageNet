@@ -106,7 +106,7 @@ def main(args):
             
             epsilon = jax.random.normal(key=noise_key, shape=batch.shape)
             
-            batch *= .18215 
+            # batch *= .18215 
             noisy_batch = batch * jnp.sqrt(alpha_bar_t) + jnp.sqrt(1 - alpha_bar_t) * epsilon
 
             loss = train_step(DiTmodel, optimizer, noisy_batch, t, epsilon)

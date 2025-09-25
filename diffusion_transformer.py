@@ -4,94 +4,46 @@ from jax import vmap
 from flax import nnx
 from helpers.config import modelConfig
 
-# class MHA(nnx.Module):
-#     def __init__(self, config: modelConfig):
-        
-#         self.length = config.token_length
-#         self.hidden = config.DiT_hidden_size
-#         self.num_heads = config.n_heads
-        
-#         self.d_head = self.hidden // self.num_heads
-#         self.qkv_proj = nnx.Linear(self.hidden, 3 * self.hidden, rngs=nnx.Rngs(0))
-#         self.out_proj = nnx.Linear(self.hidden, self.hidden, rngs=nnx.Rngs(0))
-
-#     def __call__(self, x):
-#         return self.forward(x)
-
-#     def forward(self, x):
-#         # x: [L, Hidden]
-#         y = self.qkv_proj(x)                     # [L, 3H]
-#         y = y.reshape(self.length, 3, self.num_heads, self.d_head)   # [L, 3, head, d]
-#         y = jnp.transpose(y, (1, 2, 0, 3))       # [3, h, L, d]
-#         q, k, v = y[0], y[1], y[2]               # each [h, L, d]
-
-#         values, attention = self.scaled_dot_product(q, k, v)  # values: [h, L, d]
-#         values = jnp.transpose(values, (1, 0, 2)).reshape(self.length, self.hidden)  # [L, H]
-#         values = self.out_proj(values)           # [L, H]
-#         return values, attention                 # attention: [h, L, L]
-  
-#     def scaled_dot_product(self, q, k, v):
-#         """Implements scaled dot product with jax.numpy's functionality"""
-#         # q, k, v: [num_heads, L, d_head]
-#         d = q.shape[-1]
-#         scale = 1.0 / jnp.sqrt(d)
-#         # [num_heads, L, L]
-#         attn_logits = jnp.einsum('hld,hmd->hlm', q, k) * scale
-#         attn = jax.nn.softmax(attn_logits, axis=-1)
-#         # [num_heads, L, d_head]
-#         out = jnp.einsum('hlm,hmd->hld', attn, v)
-#         return out, attn
-
-
+xavier_init = nnx.initializers.xavier_uniform()
 
 class MHA(nnx.Module):
-    def __init__(self, config: "modelConfig"):
+    def __init__(self, config: modelConfig):
+        
         self.length = config.token_length
         self.hidden = config.DiT_hidden_size
         self.num_heads = config.n_heads
+        
         self.d_head = self.hidden // self.num_heads
-
-        self.qkv_proj = nnx.Linear(self.hidden, 3 * self.hidden, rngs=nnx.Rngs(0))
-        self.out_proj = nnx.Linear(self.hidden, self.hidden, rngs=nnx.Rngs(0))
+        self.qkv_proj = nnx.Linear(self.hidden, 3 * self.hidden, kernel_init=xavier_init, rngs=nnx.Rngs(0))
+        self.out_proj = nnx.Linear(self.hidden, self.hidden, kernel_init=xavier_init, rngs=nnx.Rngs(0))
 
     def __call__(self, x):
         return self.forward(x)
 
     def forward(self, x):
-        assert x.shape[0] == self.length, (
-            f"Expected sequence length is {self.length}, instead have {x.shape[0]}"
-        )
+        # x: [L, Hidden]
+        y = self.qkv_proj(x)                     # [L, 3H]
+        y = y.reshape(self.length, 3, self.num_heads, self.d_head)   # [L, 3, head, d]
+        y = jnp.transpose(y, (1, 2, 0, 3))       # [3, h, L, d]
+        q, k, v = y[0], y[1], y[2]               # each [h, L, d]
 
-        # Project to QKV
-        y = self.qkv_proj(x)                                # [L, 3H]
-        y = y.reshape(self.length, 3, self.num_heads, self.d_head)  # [L, 3, h, d]
-        y = jnp.transpose(y, (1, 2, 0, 3))                  # [3, h, L, d]
-        q, k, v = y[0], y[1], y[2]                          # each [h, L, d]
-
-        # Scaled dot-product attention
-        values, attn = self.scaled_dot_product(q, k, v)     # values: [h, L, d]
-
-        # Concatenate heads
+        values, attention = self.scaled_dot_product(q, k, v)  # values: [h, L, d]
         values = jnp.transpose(values, (1, 0, 2)).reshape(self.length, self.hidden)  # [L, H]
-
-        # project back to hidden dim
-        out = self.out_proj(values)                         # [L, H]
-        return out, attn                                    # attn: [h, L, L]
-
+        values = self.out_proj(values)           # [L, H]
+        return values, attention                 # attention: [h, L, L]
+  
     def scaled_dot_product(self, q, k, v):
-        """Scaled dot-product attention."""
+        """Implements scaled dot product with jax.numpy's functionality"""
+        # q, k, v: [num_heads, L, d_head]
         d = q.shape[-1]
         scale = 1.0 / jnp.sqrt(d)
-
-        # Compute attention logits
-        attn_logits = jnp.einsum("hld,hmd->hlm", q, k) * scale  # [h, L, L]
-
-        # Normalize
-        attn = jax.nn.softmax(attn_logits, axis=-1)             # [h, L, L]
-
-        # Weighted sum of values
-        out = jnp.einsum("hlm,hmd->hld", attn, v)               # [h, L, d]
+        # [num_heads, L, L]
+        attn_logits = jnp.einsum('hld,hmd->hlm', q, k) * scale
+        attn = jax.nn.softmax(attn_logits, axis=-1)
+        # [num_heads, L, d_head]
+        out = jnp.einsum('hlm,hmd->hld', attn, v)
         return out, attn
+
 
 class MLP(nnx.Module):
     def __init__(self, config:modelConfig):
@@ -100,9 +52,9 @@ class MLP(nnx.Module):
         options compared to ViT implementations, but 
         sufficient for the task. Uses GeLU activations.
         """
-        self.fc1 = nnx.Linear(config.DiT_hidden_size, config.MLP_hidden_size, rngs=nnx.Rngs(0))
+        self.fc1 = nnx.Linear(config.DiT_hidden_size, config.MLP_hidden_size, kernel_init=xavier_init, rngs=nnx.Rngs(0))
         self.act = lambda t: nnx.gelu(t, approximate=True)
-        self.fc2 = nnx.Linear(config.MLP_hidden_size, config.DiT_hidden_size, rngs=nnx.Rngs(0))
+        self.fc2 = nnx.Linear(config.MLP_hidden_size, config.DiT_hidden_size, kernel_init=xavier_init, rngs=nnx.Rngs(0))
     
     def __call__(self, x):
         return self.forward(x)
@@ -124,22 +76,25 @@ class DiTBlock(nnx.Module):
         """
         
         # self.config = config
-        self.LayerNorm1 = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(0), use_scale=False, use_bias=False, eps=1e-6)
-        self.LayerNorm2 = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(0), use_scale=False, use_bias=False, eps=1e-6)
+        self.LayerNorm1 = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(0), use_scale=False, use_bias=False)
+        self.LayerNorm2 = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(0), use_scale=False, use_bias=False)
         self.MHA = MHA(config)
         self.MLP = MLP(config) 
 
         # MLP for conditioning info
-        self.cLinWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size * 6, rngs=nnx.Rngs(0), kernel_init=zero_init)
+        self.cLinWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size * 4, rngs=nnx.Rngs(0), kernel_init=xavier_init)  
+        self.cScaleWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size * 2, rngs=nnx.Rngs(0), kernel_init=zero_init)
     
     def __call__(self, x, conditioning):
         """Uses vmap to process batched inputs."""
         return self.forward(x, conditioning)
 
     def forward(self, x, conditioning):
-        gamma1, beta1, alpha1, gamma2, beta2, alpha2 = self.cLinWeights(nnx.silu(conditioning)).reshape((6, -1))
+        alpha1, beta1, alpha2, beta2 = self.cLinWeights(nnx.silu(conditioning)).reshape((4, -1))
+        gamm1, gamm2 = self.cScaleWeights(nnx.silu(conditioning)).reshape((2, -1))
+        # gamma1, beta1, alpha1, gamma2, beta2, alpha2 = self.cLinWeights(nnx.silu(conditioning)).reshape((6, -1))
         tmp = self.LayerNorm1(x)
-        tmp = (gamma1+1)*tmp + beta1 
+        tmp = (alpha+1)*tmp + beta1 
         tmp, attn = self.MHA(tmp)
         tmp = alpha1*tmp
 
@@ -147,7 +102,7 @@ class DiTBlock(nnx.Module):
         x = tmp
 
         tmp = self.LayerNorm2(tmp)
-        tmp = (1+gamma2)*tmp + beta2 
+        tmp = (alpha+1)*tmp + beta2 
         tmp = self.MLP(tmp)
         tmp = alpha2*tmp
 
@@ -158,8 +113,8 @@ class DiTBlock(nnx.Module):
 class DiTFinalLayer(nnx.Module):
     def __init__(self, config: modelConfig):
         
-        self.LayerNorm = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(0), use_scale=False, use_bias=False, eps=1e-6)
-        self.linear = nnx.Linear(config.DiT_hidden_size, config.patch_size**2*config.output_dim, rngs=nnx.Rngs(0)) 
+        self.LayerNorm = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(0), use_scale=False, use_bias=False)
+        self.linear = nnx.Linear(config.DiT_hidden_size, config.patch_size**2*config.output_dim, kernel_init=xavier_init, rngs=nnx.Rngs(0)) 
         self.linWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size*2, rngs=nnx.Rngs(0), kernel_init=zero_init)
 
     def forward(self, x, conditioning):

@@ -68,7 +68,7 @@ def main(args):
     # Load configurations
     trainconfig = trainConfig()
     modelconfig = modelConfig()
-    trainconfig.batch_size = 256 #TODO: remove
+    trainconfig.batch_size = 1024 #TODO: remove
     trainconfig.log_frequency = 500
     trainconfig.epochs = 1500
 
@@ -125,7 +125,7 @@ def main(args):
     #         #print(batch.shape)
     #         assert batch.shape == (trainconfig.batch_size, 4, 32, 32)
     
-    train_dataset = jnp.array(np.load('data/1_train_latents.npy'))
+    train_dataset = jnp.array(np.load('data/5_train_latents.npy'))
     print(train_dataset.shape)
     train_dataset = ArrayDataset(train_dataset)
     train_dataloader = DataLoader(
