@@ -164,7 +164,7 @@ class DiffusionTransformer(nnx.Module):
         self.mapper = DiTPatch(config)
         self.time_MLP = MLP(config)
 
-        self.pos_embed = self.pos_embed() #TODO: freeze these values.
+        self.pos_embed = nnx.Static(self.pos_embed()) #TODO: freeze these values.
     
     def pos_embed(self):
         # Implements: pos / 1000^(2i/d_model)
@@ -194,10 +194,10 @@ class DiffusionTransformer(nnx.Module):
         freqs = jnp.exp(
             -jnp.log(max_period) * jnp.arange(start=0, stop=half, dtype=jnp.float32) / half
         )
-        args = jnp.float32(t[None]) * freqs[None]
+        args = jnp.float32(t) * freqs
         embedding = jnp.concatenate([jnp.cos(args), jnp.sin(args)], axis=-1)
         if self.DiT_hidden_size % 2:
-            embedding = jnp.cat([embedding, jnp.zeros_like(embedding[:1])], dim=-1)
+            embedding = jnp.concatenate([embedding, jnp.zeros(1)], axis=-1)
         return embedding
 
     def forward(self, x, timestep):
@@ -208,7 +208,7 @@ class DiffusionTransformer(nnx.Module):
         y: (N,) tensor of class labels
         """
         x = self.mapper.convert_to_stream(x) # Convert [4, 32, 32] to [4*32*32] & applies MLP
-        x = x + self.pos_embed # Adds sinusoidal PE
+        x = x + self.pos_embed.value # Adds sinusoidal PE
         
         conditioning = self.time_MLP(self.time_embed(timestep)) # Embeds single timestep to [hidden_dim]
 
