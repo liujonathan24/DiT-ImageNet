@@ -60,7 +60,7 @@ def main(args):
             t_vec = jnp.ones((trainconfig.batch_size)) * t
             prediction = model(x_t, t_vec)
             modified_x_t = x_t - prediction * (1-diffusion.alphas[t])/(jnp.sqrt(1-diffusion.alpha_bars[t]))
-
+            
             modified_x_t *= 1/jnp.sqrt(diffusion.alphas[t])
 
             z_t = jax.random.normal(rngs, shape=(trainconfig.batch_size, config.image_channels, config.input_size, config.input_size)) if t >1 else jnp.zeros((trainconfig.batch_size, config.image_channels, config.input_size, config.input_size))
