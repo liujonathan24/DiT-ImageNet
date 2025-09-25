@@ -90,11 +90,12 @@ class DiTBlock(nnx.Module):
         return self.forward(x, conditioning)
 
     def forward(self, x, conditioning):
+        orig = jnp.copy(x)
         alpha1, beta1, alpha2, beta2 = self.cLinWeights(nnx.silu(conditioning)).reshape((4, -1))
         gamm1, gamm2 = self.cScaleWeights(nnx.silu(conditioning)).reshape((2, -1))
         # gamma1, beta1, alpha1, gamma2, beta2, alpha2 = self.cLinWeights(nnx.silu(conditioning)).reshape((6, -1))
         tmp = self.LayerNorm1(x)
-        tmp = (alpha+1)*tmp + beta1 
+        tmp = (alpha1+1)*tmp + beta1 
         tmp, attn = self.MHA(tmp)
         tmp = alpha1*tmp
 
@@ -102,19 +103,22 @@ class DiTBlock(nnx.Module):
         x = tmp
 
         tmp = self.LayerNorm2(tmp)
-        tmp = (alpha+1)*tmp + beta2 
+        tmp = (alpha2+1)*tmp + beta2 
         tmp = self.MLP(tmp)
         tmp = alpha2*tmp
 
         x += tmp
-
+        # print(jnp.sum(jnp.equal(x, orig)))
+        # jax.debug.print(x, orig)
+        # assert jnp.all(jnp.equal(x, orig)) # jnp.array_equal(x, orig)
+        # assert 1 == 2
         return x
 
 class DiTFinalLayer(nnx.Module):
     def __init__(self, config: modelConfig):
         
         self.LayerNorm = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(0), use_scale=False, use_bias=False)
-        self.linear = nnx.Linear(config.DiT_hidden_size, config.patch_size**2*config.output_dim, kernel_init=xavier_init, rngs=nnx.Rngs(0)) 
+        self.linear = nnx.Linear(config.DiT_hidden_size, config.patch_size**2*config.output_dim, kernel_init=zero_init, rngs=nnx.Rngs(0)) 
         self.linWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size*2, rngs=nnx.Rngs(0), kernel_init=zero_init)
 
     def forward(self, x, conditioning):

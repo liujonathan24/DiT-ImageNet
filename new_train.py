@@ -69,7 +69,8 @@ def main(args):
     trainconfig = trainConfig()
     modelconfig = modelConfig()
     trainconfig.batch_size = 1024 #TODO: remove
-    trainconfig.log_frequency = 500
+    trainconfig.log_frequency = 13 # 500
+    trainconfig.ckpt_frequency = 100
     trainconfig.epochs = 1500
 
     diffusion = Diffusion(trainconfig.linear_variance_min, trainconfig.linear_variance_max, trainconfig.tmax)
@@ -125,7 +126,7 @@ def main(args):
     #         #print(batch.shape)
     #         assert batch.shape == (trainconfig.batch_size, 4, 32, 32)
     
-    train_dataset = jnp.array(np.load('data/5_train_latents.npy'))
+    train_dataset = jnp.array(np.load('data/10_train_latents.npy')) # 'data/5_train_latents.npy'))
     print(train_dataset.shape)
     train_dataset = ArrayDataset(train_dataset)
     train_dataloader = DataLoader(
@@ -177,6 +178,7 @@ def main(args):
 
             t = jax.random.randint(t_key, (batch.shape[0],), 0, 1000)
             alpha_bar_t = diffusion.get_alpha_bar(t)[:, None, None, None]
+            # print(alpha_bar_t)
             epsilon = jax.random.normal(key=noise_key, shape=batch.shape)
             noise = jnp.sqrt(1 - alpha_bar_t) * epsilon
             noisy_batch = batch * jnp.sqrt(alpha_bar_t) + noise

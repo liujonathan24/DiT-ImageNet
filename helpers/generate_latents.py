@@ -45,7 +45,7 @@ def main():
     # Load configurations
     trainconfig = trainConfig()
     trainconfig.batch_size = 64
-    num_copies = 5
+    num_copies = 10
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     sd_vae = get_sd_vae()
@@ -53,7 +53,7 @@ def main():
     sd_vae.to(device)
 
 
-    train_dataset, valid_dataset = load_data()
+    train_dataset, valid_dataset = load_data(number_classes=1)
     train_dataloader = DataLoader(
         dataset=train_dataset,
         batch_size=trainconfig.batch_size,
