@@ -53,6 +53,7 @@ def main(args):
     for i in range(int(jnp.ceil(1000/trainconfig.batch_size))):
         # Diffusion process. Starts with [b, c, h, w] = [b, 4, 32, 32] ~ N(0, 1)
         x_t = jax.random.normal(rngs, shape=(trainconfig.batch_size, config.image_channels, config.input_size, config.input_size))
+        x_t = jnp.clip(x_t, min=-1, max=1)
         for t in range(50, 0, -1): # range(1000, 0, -1):
             
             # t = jnp.ones((trainconfig.batch_size)) * t
