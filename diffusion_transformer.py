@@ -124,8 +124,8 @@ class DiTBlock(nnx.Module):
         """
         
         # self.config = config
-        self.LayerNorm1 = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(0))
-        self.LayerNorm2 = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(0))
+        self.LayerNorm1 = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(0), use_scale=False, use_bias=False, eps=1e-6)
+        self.LayerNorm2 = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(0), use_scale=False, use_bias=False, eps=1e-6)
         self.MHA = MHA(config)
         self.MLP = MLP(config) 
 
@@ -158,7 +158,7 @@ class DiTBlock(nnx.Module):
 class DiTFinalLayer(nnx.Module):
     def __init__(self, config: modelConfig):
         
-        self.LayerNorm = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(0))
+        self.LayerNorm = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(0), use_scale=False, use_bias=False, eps=1e-6)
         self.linear = nnx.Linear(config.DiT_hidden_size, config.patch_size**2*config.output_dim, rngs=nnx.Rngs(0)) 
         self.linWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size*2, rngs=nnx.Rngs(0), kernel_init=zero_init)
 
