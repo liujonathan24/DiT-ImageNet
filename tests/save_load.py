@@ -10,7 +10,7 @@ from glob import glob
 import optax
 import orbax.checkpoint as ocp
 import numpy as np
-from helpers.porting import restore_checkpoint, save_checkpoint
+from helpers.checkpoint import restore_checkpoint, save_checkpoint
 
 
 def main(args):

@@ -2,6 +2,27 @@
 
 Implement a DiT-S model in JAX, and train it on ImageNet.
 
+
+# Current status:
+To download the data and process it, first run /scripts/download_imagenet.sh. Then, to resize the images, run 
+``` python -m helpers.reshape_images```.
+
+helpers/ contains many helper functions and classes.
+checkpoint.py provides the functionality to save and load flax NNX models.
+config.py and diffusion.py contain classes defining the model size, training configs, and generation configs.
+generate_latents.py downloads or uses a local copy of the stabilityai/sd-vae-ft-ema VAE to save latent representations of the Imagenet data.
+logging_utils creates a custom logging class.
+
+preprocess_data_torch.py, preprocess_data.py are two variants (torch versus jax) that generate latent representations of Imagenet data. I created both versions to benchmark how quickly each ran.
+
+In /vae, there are two files to import/download the VAE model in Jax (load as Pytorch but convert to Jax & save) or Pytorch. test_sd_vae.py allows these models to be tested. 
+
+
+
+
+
+
+
 ## Guide 
 
 ### Compute Resources
