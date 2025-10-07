@@ -49,8 +49,10 @@ def main(args):
         plt.xticks(df['Epoch'].unique())
 
     # Save the plot to a file
-    plt.savefig('loss_vs_epoch.png')
-    print("Plot saved to loss_vs_epoch.png")
+    output_dir = os.path.dirname(args.log_file)
+    output_path = os.path.join(output_dir, 'loss_vs_epoch.png')
+    plt.savefig(output_path)
+    print(f"Plot saved to {output_path}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
