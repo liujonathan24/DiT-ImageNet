@@ -126,9 +126,10 @@ def main(args):
     #         #print(batch.shape)
     #         assert batch.shape == (trainconfig.batch_size, 4, 32, 32)
     
-    train_dataset = jnp.array(np.load('data/10_train_latents.npy')) # 'data/5_train_latents.npy'))
-    print(train_dataset.shape)
-    train_dataset = ArrayDataset(train_dataset)
+    train_latents = jnp.array(np.load('data/10_train_latents.npy'))
+    train_labels = jnp.array(np.load('data/10_train_labels.npy'))
+    train_dataset = TensorDataset(train_latents, train_labels)
+    
     train_dataloader = DataLoader(
         dataset=train_dataset,
         backend='jax',
@@ -136,7 +137,7 @@ def main(args):
         shuffle=True,
         num_workers=2,
         pin_memory=True
-    ) 
+    )
 
     random_key = jax.random.PRNGKey(0)
     test_restore = False
@@ -144,8 +145,7 @@ def main(args):
         logging.info(f"Starting epoch {epoch}")
         epoch_start_time = time.time()
         running_loss = 0.0
-        for i, (batch) in enumerate(tqdm(train_dataloader)):
-            batch = batch[0]  
+        for i, (batch, labels) in enumerate(tqdm(train_dataloader)):
             # print(batch.shape)
            
 
@@ -183,7 +183,7 @@ def main(args):
             noise = jnp.sqrt(1 - alpha_bar_t) * epsilon
             noisy_batch = batch * jnp.sqrt(alpha_bar_t) + noise
 
-            loss = train_step(DiTmodel, optimizer, noisy_batch, t, epsilon)
+            loss = train_step(DiTmodel, optimizer, noisy_batch, t, epsilon, labels)
 
             running_loss += loss.item()
 

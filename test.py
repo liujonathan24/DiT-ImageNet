@@ -68,6 +68,7 @@ def main(args):
             noise_t = jnp.sqrt(diffusion.variances[t-1]) * z_t
 
             x_t = modified_x_t + noise_t
+            x_t = jnp.clip(x_t, min=-1, max=1)
         # Decode:
         x_t /= 0.18215
         print(f"Final shape is {x_t.shape}") # (12, 4, 32, 32)

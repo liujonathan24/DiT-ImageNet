@@ -20,6 +20,10 @@ class modelConfig:
         self.MLP_hidden_size = self.DiT_hidden_size * 4 # TODO: consider adjusting this. 
         self.token_length = int((self.input_size/self.patch_size)**2)
 
+
+        # Classes
+        self.n_classes = 100
+
     def to_dict(self):
         # Return a serializable dict representation, excluding non-serializable fields
         return {
@@ -36,6 +40,7 @@ class modelConfig:
             "DiT_hidden_size": self.DiT_hidden_size,
             "MLP_hidden_size": self.MLP_hidden_size,
             "token_length": self.token_length,
+            "n_classes": self.n_classes,
         }
 
 class trainConfig:

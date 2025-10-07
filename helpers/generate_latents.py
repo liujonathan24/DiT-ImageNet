@@ -74,7 +74,10 @@ def main():
                 # assert 1 == 2 
         # break
     output_latents = np.concatenate(output_latents, axis=0)
+    output_labels = np.concatenate(output_labels, axis=0)
     print(output_latents.shape)
+    print(output_labels.shape)
     np.save(f"data/{num_copies}_train_latents.npy", output_latents)
+    np.save(f"data/{num_copies}_train_labels.npy", output_labels)
 if __name__ == "__main__":
     main()

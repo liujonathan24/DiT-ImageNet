@@ -152,7 +152,7 @@ class DiTPatch(nnx.Module):
     def convert_to_stream(self, input):
         input = jnp.einsum('chw->hwc', input)
         input = self.patch_embeddings(input)
-        input = input.reshape(-1, self.token_length, self.DiT_hidden_size)
+        input = input.reshape(self.token_length, self.DiT_hidden_size)
         return input
 
 class DiffusionTransformer(nnx.Module):
@@ -205,7 +205,7 @@ class DiffusionTransformer(nnx.Module):
             embedding = jnp.concatenate([embedding, jnp.zeros(1)], axis=-1)
         return embedding
 
-    def forward(self, x, timestep):
+    def forward(self, x, timestep, y):
         """
         Forward pass of DiT.
         x: (N, C, H, W) tensor of spatial inputs (images or latent representations of images)
@@ -215,7 +215,9 @@ class DiffusionTransformer(nnx.Module):
         x = self.mapper.convert_to_stream(x) # Convert [4, 32, 32] to [4*32*32] & applies MLP
         x = x + self.pos_embed # Adds sinusoidal PE
         
-        conditioning = self.time_MLP(self.time_embed(timestep)) # Embeds single timestep to [hidden_dim]
+        time_embedding = self.time_MLP(self.time_embed(timestep))
+        class_embedding = self.class_embed(y)
+        conditioning = time_embedding + class_embedding
 
         for layer in range(self.n_layers):
             x = self.layers[layer].forward(x, conditioning)
@@ -224,10 +226,10 @@ class DiffusionTransformer(nnx.Module):
         return x
             
 
-    def __call__(self, x, conditioning): 
+    def __call__(self, x, timestep, y): 
         """Uses vmap to process batched inputs."""
-        func = lambda x, conditioning: self.forward(x, conditioning)
-        return vmap(func, in_axes=(0, 0), out_axes=0)(x, conditioning)
+        func = lambda x, timestep, y: self.forward(x, timestep, y)
+        return vmap(func, in_axes=(0, 0, 0), out_axes=0)(x, timestep, y)
 
 if __name__=="__main__":
   # Testing
