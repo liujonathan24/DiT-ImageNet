@@ -18,7 +18,6 @@ from vae.import_sd_vae_torch import get_sd_vae
 from PIL import Image
 import numpy as np
 import torch
-from helpers.porting import restore_checkpoint
 from diffusion_transformer import DiffusionTransformer
 import jax 
 import jax.numpy as jnp
@@ -36,7 +35,7 @@ import orbax.checkpoint as ocp
 import time
 import jax_dataloader as jdl
 import json
-from helpers.porting import save_checkpoint, restore_checkpoint
+from helpers.checkpoint import save_checkpoint, restore_checkpoint
 from helpers.logging_utils import setup_logging
 from helpers.diffusion import Diffusion
 import logging
@@ -68,10 +67,10 @@ def main(args):
     # Load configurations
     trainconfig = trainConfig()
     modelconfig = modelConfig()
-    trainconfig.batch_size = 1024 #TODO: remove
-    trainconfig.log_frequency = 13 # 500
-    trainconfig.ckpt_frequency = 100
-    trainconfig.epochs = 1500
+    trainconfig.batch_size = 2048 #TODO: remove
+    trainconfig.log_frequency = 7  # 635
+    trainconfig.ckpt_frequency = 100 # 10
+    trainconfig.epochs = 45000 # 1500
 
     diffusion = Diffusion(trainconfig.linear_variance_min, trainconfig.linear_variance_max, trainconfig.tmax)
 
