@@ -2,6 +2,8 @@ import pandas as pd
 import re
 import matplotlib.pyplot as plt
 import argparse
+import os
+
 
 def main(args):
     # Read the log file
@@ -35,6 +37,7 @@ def main(args):
 
     # Plot the Loss vs. Epoch
     plt.plot(df['Epoch'], df['Loss'], marker='o', linestyle='-', color='b')
+    # plt.yscale('log')
 
     # Add labels and title
     plt.title('Training Loss vs. Epoch')
@@ -45,8 +48,8 @@ def main(args):
     plt.grid(True, linestyle='--', alpha=0.6)
 
     # Set x-axis ticks to be integers for each epoch
-    if not df.empty:
-        plt.xticks(df['Epoch'].unique())
+    # if not df.empty:
+    #     plt.xticks(df['Epoch'].unique())
 
     # Save the plot to a file
     output_dir = os.path.dirname(args.log_file)

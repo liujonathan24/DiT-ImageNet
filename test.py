@@ -53,8 +53,8 @@ def main(args):
     for i in range(int(jnp.ceil(1000/trainconfig.batch_size))):
         # Diffusion process. Starts with [b, c, h, w] = [b, 4, 32, 32] ~ N(0, 1)
         x_t = jax.random.normal(rngs, shape=(trainconfig.batch_size, config.image_channels, config.input_size, config.input_size))
-        x_t = jnp.clip(x_t, min=-1, max=1)
-        for t in range(100, 0, -1): # range(1000, 0, -1):
+       
+        for t in range(1000, 0, -1): # range(1000, 0, -1):
             
             # t = jnp.ones((trainconfig.batch_size)) * t
             # print(x_t.shape, t.shape)
@@ -68,6 +68,7 @@ def main(args):
             noise_t = jnp.sqrt(diffusion.variances[t-1]) * z_t
 
             x_t = modified_x_t + noise_t
+            x_t = jnp.clip(x_t, min=-1, max=1)
         # Decode:
         x_t /= 0.18215
         print(f"Final shape is {x_t.shape}") # (12, 4, 32, 32)

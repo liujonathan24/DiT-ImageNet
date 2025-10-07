@@ -75,6 +75,6 @@ def main():
         # break
     output_latents = np.concatenate(output_latents, axis=0)
     print(output_latents.shape)
-    np.save(f"data/{num_copies}_train_latents.npy", output_latents)
+    np.save(f"data/shark_{num_copies}_train_latents.npy", output_latents)
 if __name__ == "__main__":
     main()

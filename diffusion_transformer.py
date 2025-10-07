@@ -152,7 +152,7 @@ class DiTPatch(nnx.Module):
     def convert_to_stream(self, input):
         input = jnp.einsum('chw->hwc', input)
         input = self.patch_embeddings(input)
-        input = input.reshape(-1, self.token_length, self.DiT_hidden_size)
+        input = input.reshape(self.token_length, self.DiT_hidden_size)
         return input
 
 class DiffusionTransformer(nnx.Module):

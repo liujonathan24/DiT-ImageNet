@@ -75,7 +75,7 @@ def load_data(number_classes=None):
     ]
 
     if number_classes:
-        selected_class_dirs = all_class_dirs[:number_classes]
+        selected_class_dirs = all_class_dirs[1:number_classes+1]
     else:
         number_classes = len(all_class_dirs)
         selected_class_dirs = all_class_dirs
@@ -88,6 +88,8 @@ def load_data(number_classes=None):
     train_samples = []
     for train_path_part in TRAIN_PATHS:
         for class_name in selected_class_dirs:
+            # if class_name != "n01484850":
+            #     continue
             class_idx = class_to_idx[class_name]
             class_dir = os.path.join(train_path_part, class_name)
             if os.path.isdir(class_dir):
@@ -96,10 +98,13 @@ def load_data(number_classes=None):
                         path = os.path.join(class_dir, fname)
                         item = (path, class_idx)
                         train_samples.append(item)
+            
+        # break
 
     # --- Manually build the list of validation samples ---
     valid_samples = []
     for class_name in selected_class_dirs:
+        # break
         class_idx = class_to_idx[class_name]
         class_dir = os.path.join(VALID_PATH, class_name)
         if os.path.isdir(class_dir):
