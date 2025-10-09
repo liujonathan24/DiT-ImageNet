@@ -46,7 +46,7 @@ class MHA(nnx.Module):
 
 
 class MLP(nnx.Module):
-    def __init__(self, config:modelConfig):
+    def __init__(self, config: modelConfig):
         """
         Inititializes a MLP block. Has reduced 
         options compared to ViT implementations, but 
@@ -90,7 +90,6 @@ class DiTBlock(nnx.Module):
         return self.forward(x, conditioning)
 
     def forward(self, x, conditioning):
-        orig = jnp.copy(x)
         alpha1, beta1, alpha2, beta2 = self.cLinWeights(nnx.silu(conditioning)).reshape((4, -1))
         gamma1, gamma2 = self.cScaleWeights(nnx.silu(conditioning)).reshape((2, -1))
 
@@ -172,10 +171,10 @@ class DiffusionTransformer(nnx.Module):
         self.pos_embed = self.pos_embed() 
     
     def pos_embed(self):
-        # Implements: pos / 1000^(2i/d_model)
+        # Implements: pos / 10000^(2i/d_model)
         # Implementation from https://medium.com/thedeephub/positional-encoding-explained-a-deep-dive-into-transformer-pe-65cfe8cfe10b  
         position = jnp.arange(self.length)[:, jnp.newaxis]
-        # The original formula pos / 1000^(2i/d_model) is equivalent to pos * (1 / 1000^(2i/d_model)).
+        # The original formula pos / 10000^(2i/d_model) is equivalent to pos * (1 / 10000^(2i/d_model)).
         # I use the below version for numerical stability
         div_term = jnp.exp(jnp.arange(0, self.DiT_hidden_size, 2) * -(jnp.log(10000.0) / self.DiT_hidden_size))
         
@@ -261,8 +260,3 @@ if __name__=="__main__":
     test_DiT = DiffusionTransformer(config)
     x = test_DiT(test_input, test_timesteps)
     print(x.shape)
-
-# To consider: change all lin shifts to (1+scale)
-
-
-

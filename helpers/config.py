@@ -7,7 +7,7 @@ class modelConfig:
         # Patch details
         self.input_size = 32
         self.image_channels = 4
-        self.patch_size = 8
+        self.patch_size = 8 # change to 4
 
         # output details
         self.output_dim = 4
@@ -24,7 +24,6 @@ class modelConfig:
         # Return a serializable dict representation, excluding non-serializable fields
         return {
             "model_type": self.model_type,
-            # Optionally store a serializable version of rngs if needed, or exclude:
             #"rngs": None,
             "input_size": self.input_size,
             "image_channels": self.image_channels,
