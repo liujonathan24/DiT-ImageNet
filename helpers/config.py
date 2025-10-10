@@ -7,10 +7,10 @@ class modelConfig:
         # Patch details
         self.input_size = 32
         self.image_channels = 4
-        self.patch_size = 8 # change to 4
+        self.patch_size = 2 # change to 4
 
         # output details
-        self.output_dim = 4
+        self.output_dim = int(self.input_size/self.patch_size)
         self.output_channels = 4
 
         # Architecture details

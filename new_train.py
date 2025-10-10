@@ -67,8 +67,8 @@ def main(args):
     # Load configurations
     trainconfig = trainConfig()
     modelconfig = modelConfig()
-    trainconfig.batch_size = 2048 #TODO: remove
-    trainconfig.log_frequency = 7  # 635
+    trainconfig.batch_size = 256 #TODO: remove
+    trainconfig.log_frequency = 51  # 635
     trainconfig.ckpt_frequency = 100 # 10
     trainconfig.epochs = 135000 # 1500
 

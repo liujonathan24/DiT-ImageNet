@@ -112,14 +112,19 @@ class DiTFinalLayer(nnx.Module):
     def __init__(self, config: modelConfig):
         
         self.LayerNorm = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(0), use_scale=False, use_bias=False)
-        self.linear = nnx.Linear(config.DiT_hidden_size, config.patch_size**2*config.output_dim, kernel_init=zero_init, rngs=nnx.Rngs(0)) 
+        # print("init final layer")
+        # print(config.patch_size, config.output_dim)
+        self.linear = nnx.Linear(config.DiT_hidden_size, config.patch_size**2*config.output_channels, kernel_init=zero_init, rngs=nnx.Rngs(0)) 
         self.linWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size*2, rngs=nnx.Rngs(0), kernel_init=zero_init)
 
     def forward(self, x, conditioning):
         x = self.LayerNorm(x)
-        alpha, beta = self.linWeights(nnx.silu(conditioning)).reshape(2, -1)
+        # print(f"layer norm: {x.shape}")
+        alpha, beta = self.linWeights(nnx.silu(conditioning)).reshape((2, -1))
         x = (1+alpha) * x + beta
+        # print(f"scaled: {x.shape}")
         x = self.linear(x)
+        # print(f"x shape: {x.shape}")
         return x
 
     def __call__(self, x, conditioning):
@@ -143,6 +148,7 @@ class DiTPatch(nnx.Module):
         )
 
     def convert_to_patches(self, input):
+        # print(input.shape)
         x = input.reshape((self.output_dim, self.output_dim, self.patch_size, self.patch_size, self.output_channels))
         x = jnp.einsum('hwpqc->chpwq', x)
         imgs = x.reshape((self.output_channels, self.output_dim*self.patch_size, self.output_dim*self.patch_size))
@@ -152,6 +158,7 @@ class DiTPatch(nnx.Module):
         input = jnp.einsum('chw->hwc', input)
         input = self.patch_embeddings(input)
         input = input.reshape(self.token_length, self.DiT_hidden_size)
+        # print(f"After stream: {input.shape}")
         return input
 
 class DiffusionTransformer(nnx.Module):
@@ -211,15 +218,21 @@ class DiffusionTransformer(nnx.Module):
         t: (N,) tensor of diffusion timesteps
         y: (N,) tensor of class labels
         """
+        # print(x.shape)
         x = self.mapper.convert_to_stream(x) # Convert [4, 32, 32] to [4*32*32] & applies MLP
         x = x + self.pos_embed # Adds sinusoidal PE
-        
+        # print(f"Added pos_embeds: {x.shape}")
         conditioning = self.time_MLP(self.time_embed(timestep)) # Embeds single timestep to [hidden_dim]
+        # print(f"Conditioning shape: {conditioning.shape}")
+
 
         for layer in range(self.n_layers):
             x = self.layers[layer].forward(x, conditioning)
+            # print(f"Shape after layer: {x.shape}")
         x = self.final_layer(x, conditioning)
+        # print(f"Post final layer: {x.shape}")
         x = self.mapper.convert_to_patches(x)
+        # print(f"Back to patches: {x.shape}")
         return x
             
 
