@@ -99,14 +99,14 @@ class DiTBlock(nnx.Module):
         tmp, attn = self.MHA(tmp)
         tmp = gamma1 * tmp
 
-        x += tmp
+        x = x + tmp
 
         tmp = self.LayerNorm2(x)
         tmp = (alpha2+1)*tmp + beta2
         tmp = self.MLP(tmp)
         tmp = gamma2 * tmp
 
-        x += tmp
+        x = x + tmp
         return x
 
 class DiTFinalLayer(nnx.Module):
@@ -155,6 +155,46 @@ class DiTPatch(nnx.Module):
         input = input.reshape(self.token_length, self.DiT_hidden_size)
         return input
 
+
+class ClassEmbedder(nnx.Module):
+    def __init__(self, config):
+        self.embedding_table = nnx.Embed(config.num_classes + (config.dropout_prob > 0), config.hidden_size)
+        self.num_classes = config.num_classes
+        self.dropout_prob = config.dropout_prob
+        self.rngs = nnx.Rngs(0)
+
+    def _token_drop(self, labels, force_drop_ids=None):
+        """
+        Drops labels to enable classifier-free guidance.
+        """
+        if force_drop_ids is None:
+            drop_probs = jax.random.uniform(self.rngs, shape=(labels.shape[0],))
+            drop_ids = drop_probs < self.dropout_prob
+        else:
+            drop_ids = force_drop_ids == 1
+        
+        labels = jnp.where(drop_ids, self.num_classes, labels)
+        return labels
+
+    def __call__(self, labels: jax.Array, train: bool, force_drop_ids: jax.Array | None = None) -> jax.Array:
+        """
+        Forward pass for the ClassEmbedder.
+
+        Args:
+            labels: The input class labels (integers).
+            train: A boolean indicating if the model is in training mode.
+            force_drop_ids: Optional array to force dropping specific labels.
+
+        Returns:
+            The output embeddings.
+        """
+        use_dropout = self.dropout_prob > 0
+        if train and use_dropout:
+            labels = self._token_drop(labels, force_drop_ids)
+        
+        embeddings = self.embedding_table(labels)
+        return embeddings
+    
 class DiffusionTransformer(nnx.Module):
     """Diffusion Transformer"""
     def __init__(self, config: modelConfig):
@@ -168,7 +208,7 @@ class DiffusionTransformer(nnx.Module):
         self.final_layer = DiTFinalLayer(config)
         self.mapper = DiTPatch(config)
         self.time_MLP = MLP(config)
-        self.class_embed = nnx.Embed(config.n_classes+1, config.DiT_hidden_size, rngs=nnx.Rngs(0)));
+        self.class_embed = ClassEmbedder(config)
 
 
         self.pos_embed = self.pos_embed() 
