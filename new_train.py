@@ -70,7 +70,7 @@ def main(args):
     trainconfig.batch_size = 2048 #TODO: remove
     trainconfig.log_frequency = 7  # 635
     trainconfig.ckpt_frequency = 100 # 10
-    trainconfig.epochs = 45000 # 1500
+    trainconfig.epochs = 135000 # 1500
 
     diffusion = Diffusion(trainconfig.linear_variance_min, trainconfig.linear_variance_max, trainconfig.tmax)
 
@@ -125,7 +125,7 @@ def main(args):
     #         #print(batch.shape)
     #         assert batch.shape == (trainconfig.batch_size, 4, 32, 32)
     
-    train_dataset = jnp.array(np.load('data/10_train_latents.npy')) # 'data/5_train_latents.npy'))
+    train_dataset = jnp.array(np.load('data/shark_10_train_latents.npy')) # 'data/5_train_latents.npy'))
     print(train_dataset.shape)
     train_dataset = ArrayDataset(train_dataset)
     train_dataloader = DataLoader(
