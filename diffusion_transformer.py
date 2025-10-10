@@ -168,6 +168,8 @@ class DiffusionTransformer(nnx.Module):
         self.final_layer = DiTFinalLayer(config)
         self.mapper = DiTPatch(config)
         self.time_MLP = MLP(config)
+        self.class_embed = nnx.Embed(config.n_classes+1, config.DiT_hidden_size, rngs=nnx.Rngs(0)));
+
 
         self.pos_embed = self.pos_embed() 
     
