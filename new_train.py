@@ -42,10 +42,10 @@ import logging
 from jax_dataloader.datasets import ArrayDataset
 
 @nnx.jit  # automatic state management for JAX transforms
-def train_step(model, optimizer, x, t, y):
+def train_step(model, optimizer, x, t, epsilon):
   def loss_fn(model):
     y_pred = model(x, t)  
-    return optax.losses.squared_error(y_pred, y).mean()
+    return optax.losses.squared_error(y_pred, epsilon).mean()
 
   loss, grads = nnx.value_and_grad(loss_fn)(model)
   optimizer.update(model, grads)  # in-place updates
@@ -102,28 +102,9 @@ def main(args):
     options = ocp.CheckpointManagerOptions(max_to_keep=5)
     mngr = ocp.CheckpointManager(models_dir, options=options)
     opt = optax.adamw(learning_rate=trainconfig.learning_rate)
-    optimizer = nnx.Optimizer(DiTmodel, opt, wrt=nnx.Param)
+    optimizer = nnx.Optimizer(DiTmodel, opt)
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     sd_vae = get_sd_vae().to(device)
-
-    # train_dataset, valid_dataset = load_data()
-    # train_dataloader, test_dataloader = return_dataloader(train_dataset, valid_dataset, trainconfig)
-
-    # random_key = jax.random.PRNGKey(0)
-    # test_restore = False
-    # for epoch in range(start_epoch, trainconfig.epochs):
-    #     logging.info(f"Starting epoch {epoch}")
-    #     epoch_start_time = time.time()
-    #     running_loss = 0.0
-    #     for i, (batch, labels) in enumerate(tqdm(train_dataloader)):
-    #         batch = np.transpose(batch, (0, 3, 1, 2)).to(device)
-    #         #print(batch.shape)
-    #         assert batch.shape == (trainconfig.batch_size, 3, 256, 256)
-
-            # Encode using sd_vae:
-    #         batch = 0.18215 * sd_vae.encode(batch).latent_dist.sample()
-    #         #print(batch.shape)
-    #         assert batch.shape == (trainconfig.batch_size, 4, 32, 32)
     
     train_dataset = jnp.array(np.load('data/shark_10_train_latents.npy')) # 'data/5_train_latents.npy'))
     print(train_dataset.shape)
@@ -179,8 +160,7 @@ def main(args):
             alpha_bar_t = diffusion.get_alpha_bar(t)[:, None, None, None]
             # print(alpha_bar_t)
             epsilon = jax.random.normal(key=noise_key, shape=batch.shape)
-            noise = jnp.sqrt(1 - alpha_bar_t) * epsilon
-            noisy_batch = batch * jnp.sqrt(alpha_bar_t) + noise
+            noisy_batch = batch * jnp.sqrt(alpha_bar_t) + jnp.sqrt(1 - alpha_bar_t) * epsilon
 
             loss = train_step(DiTmodel, optimizer, noisy_batch, t, epsilon)
 
