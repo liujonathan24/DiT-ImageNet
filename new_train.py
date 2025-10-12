@@ -84,7 +84,7 @@ def main(args):
     options = ocp.CheckpointManagerOptions(max_to_keep=5)
     mngr = ocp.CheckpointManager(models_dir, options=options)
     opt = optax.adamw(learning_rate=trainconfig.learning_rate)
-    optimizer = nnx.Optimizer(DiTmodel, opt)
+    optimizer = nnx.Optimizer(DiTmodel, opt, wrt=nnx.Param)
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     sd_vae = get_sd_vae().to(device)
     

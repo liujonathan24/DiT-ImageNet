@@ -2,6 +2,7 @@ from diffusion_transformer import DiffusionTransformer
 from helpers.config import modelConfig
 import jax
 import jax.numpy as jnp
+from flax import nnx
 
 def main():
     # Load model configuration
@@ -11,7 +12,7 @@ def main():
     model = DiffusionTransformer(config)
 
     # Get the model's parameters
-    params = model.get_state()
+    params = nnx.state(model)
 
     # Iterate through the parameters and print their stats
     for path, value in params.items():
