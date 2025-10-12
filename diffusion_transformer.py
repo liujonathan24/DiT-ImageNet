@@ -67,6 +67,22 @@ class MLP(nnx.Module):
         x = self.fc2(x)
         return x
 
+class TimeMLP(nnx.Module):
+    def __init__(self, config: modelConfig, rng: jax.random.PRNGKey):
+        fc1_rng, fc2_rng = jax.random.split(rng)
+        self.fc1 = nnx.Linear(config.time_embed_dim, config.DiT_hidden_size, kernel_init=xavier_init, rngs=nnx.Rngs(fc1_rng))
+        self.act = nnx.silu
+        self.fc2 = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size, kernel_init=xavier_init, rngs=nnx.Rngs(fc2_rng))
+
+    def forward(self, x):
+        x = self.fc1(x)
+        x = self.act(x)
+        x = self.fc2(x)
+        return x
+    
+    def __call__(self, x):
+        return self.forward(x)
+
 def zero_init(key, shape, dtype):
     value = jnp.zeros(shape)
     return value
@@ -77,7 +93,6 @@ class DiTBlock(nnx.Module):
         Initialize a DiT block.
         """
         
-        # self.config = config
         ln1_rng, ln2_rng, mha_rng, mlp_rng, cLin_rng = jax.random.split(rng, 5)
         self.LayerNorm1 = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(ln1_rng), use_scale=False, use_bias=False)
         self.LayerNorm2 = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(ln2_rng), use_scale=False, use_bias=False)
@@ -114,19 +129,14 @@ class DiTFinalLayer(nnx.Module):
         
         ln_rng, linear_rng, lin_weights_rng = jax.random.split(rng, 3)
         self.LayerNorm = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(ln_rng), use_scale=False, use_bias=False)
-        # print("init final layer")
-        # print(config.patch_size, config.output_dim)
         self.linear = nnx.Linear(config.DiT_hidden_size, config.patch_size**2*config.output_channels, kernel_init=xavier_init, rngs=nnx.Rngs(linear_rng)) 
         self.linWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size*2, rngs=nnx.Rngs(lin_weights_rng), kernel_init=zero_init)
 
     def forward(self, x, conditioning):
         x = self.LayerNorm(x)
-        # print(f"layer norm: {x.shape}")
         alpha, beta = self.linWeights(nnx.silu(conditioning)).reshape((2, -1))
         x = (1+alpha) * x + beta
-        # print(f"scaled: {x.shape}")
         x = self.linear(x)
-        # print(f"x shape: {x.shape}")
         return x
 
     def __call__(self, x, conditioning):
@@ -150,7 +160,6 @@ class DiTPatch(nnx.Module):
         )
 
     def convert_to_patches(self, input):
-        # print(input.shape)
         x = input.reshape((self.output_dim, self.output_dim, self.patch_size, self.patch_size, self.output_channels))
         x = jnp.einsum('hwpqc->chpwq', x)
         imgs = x.reshape((self.output_channels, self.output_dim*self.patch_size, self.output_dim*self.patch_size))
@@ -160,12 +169,12 @@ class DiTPatch(nnx.Module):
         input = jnp.einsum('chw->hwc', input)
         input = self.patch_embeddings(input)
         input = input.reshape(self.token_length, self.DiT_hidden_size)
-        # print(f"After stream: {input.shape}")
         return input
 
 class DiffusionTransformer(nnx.Module):
     """Diffusion Transformer"""
     def __init__(self, config: modelConfig):
+        self.config = config
         self.length = config.token_length 
         self.DiT_hidden_size = config.DiT_hidden_size
         self.n_layers = config.n_layers
@@ -178,71 +187,47 @@ class DiffusionTransformer(nnx.Module):
                  ])
         self.final_layer = DiTFinalLayer(config, final_rng)
         self.mapper = DiTPatch(config, mapper_rng)
-        self.time_MLP = MLP(config, time_mlp_rng)
+        self.time_MLP = TimeMLP(config, time_mlp_rng)
 
         self.pos_embed = self.pos_embed()
     
     def pos_embed(self):
-        # Implements: pos / 10000^(2i/d_model)
-        # Implementation from https://medium.com/thedeephub/positional-encoding-explained-a-deep-dive-into-transformer-pe-65cfe8cfe10b  
         position = jnp.arange(self.length)[:, jnp.newaxis]
-        # The original formula pos / 10000^(2i/d_model) is equivalent to pos * (1 / 10000^(2i/d_model)).
-        # I use the below version for numerical stability
         div_term = jnp.exp(jnp.arange(0, self.DiT_hidden_size, 2) * -(jnp.log(10000.0) / self.DiT_hidden_size))
-        # print(f"div_term: {div_term}")
-        # print(f"position: {position}")
-        
         pe = jnp.zeros((self.length, self.DiT_hidden_size))
         pe.at[:, 0::2].set(jnp.sin(position * div_term))
         pe.at[:, 1::2].set(jnp.cos(position * div_term))
-        
         return pe
 
     def time_embed(self, t, max_period=10000):
         """
-        From: https://github.com/facebookresearch/DiT/blob/ed81ce2229091fd4ecc9a223645f95cf379d582b/models.py#L27
-        # https://github.com/openai/glide-text2im/blob/main/glide_text2im/nn.py 
         Create sinusoidal timestep embeddings.
-        :param t: a 1-D Tensor of N indices, one per batch element. These may be fractional.
-        :param dim: the dimension of the output.
-        :param max_period: controls the minimum frequency of the embeddings.
-        :return: an (N, D) Tensor of positional embeddings.
         """
-        half = self.DiT_hidden_size // 2
+        dim = self.config.time_embed_dim
+        half = dim // 2
         freqs = jnp.exp(
             -jnp.log(max_period) * jnp.arange(start=0, stop=half, dtype=jnp.float32) / half
         )
         args = jnp.float32(t) * freqs
         embedding = jnp.concatenate([jnp.cos(args), jnp.sin(args)], axis=-1)
-        if self.DiT_hidden_size % 2:
+        if dim % 2:
             embedding = jnp.concatenate([embedding, jnp.zeros(1)], axis=-1)
         return embedding
 
     def forward(self, x, timestep):
         """
         Forward pass of DiT.
-        x: (N, C, H, W) tensor of spatial inputs (images or latent representations of images)
-        t: (N,) tensor of diffusion timesteps
-        y: (N,) tensor of class labels
         """
-        # print(x.shape)
-        x = self.mapper.convert_to_stream(x) # Convert [4, 32, 32] to [4*32*32] & applies MLP
-        x = x + self.pos_embed # Adds sinusoidal PE
-        # print(f"Added pos_embeds: {x.shape}")
-        conditioning = self.time_MLP(self.time_embed(timestep)) # Embeds single timestep to [hidden_dim]
-        # print(f"Conditioning shape: {conditioning.shape}")
-
+        x = self.mapper.convert_to_stream(x)
+        x = x + self.pos_embed
+        conditioning = self.time_MLP(self.time_embed(timestep))
 
         for layer in range(self.n_layers):
             x = self.layers[layer].forward(x, conditioning)
-            # print(f"Shape after layer: {x.shape}")
         x = self.final_layer(x, conditioning)
-        # print(f"Post final layer: {x.shape}")
         x = self.mapper.convert_to_patches(x)
-        # print(f"Back to patches: {x.shape}")
         return x
             
-
     def get_weights(self):
         return nnx.state(self)
 
@@ -285,6 +270,6 @@ if __name__=="__main__":
     test_timesteps = jnp.ones(batch)
     
     test_input = jnp.ones((batch, 4, 32, 32))
-    test_DiT = DiffusionTransformer(config, rng)
+    test_DiT = DiffusionTransformer(config)
     x = test_DiT(test_input, test_timesteps)
     print(x.shape)
