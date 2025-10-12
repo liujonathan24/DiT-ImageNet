@@ -32,68 +32,49 @@ def convert_weights(pytorch_weights_path, jax_model):
     # Flatten the state using JAX's tree utility to get paths and values
     flat_state_with_paths, treedef = jax.tree_util.tree_flatten_with_path(jax_state)
 
-    # Create a lookup dictionary with string paths
-    jax_flat_state_dict = {}
-    for key_path, value in flat_state_with_paths:
-        path_parts = []
-        for k in key_path:
-            if hasattr(k, 'idx'):
-                path_parts.append(str(k.idx))
-            elif hasattr(k, 'key'):
-                path_parts.append(str(k.key))
-            else:
-                path_parts.append(str(k))
-        path_str = ".".join(path_parts)
-
-        # Remove leading dot if it exists
-        if path_str.startswith('.'): path_str = path_str[1:]
-        jax_flat_state_dict[path_str] = value
-
-    print("Available JAX parameter keys:", list(jax_flat_state_dict.keys()))
-
     # --- Weight Mapping ---
-    # This mapping is a starting point and may need adjustment
-    # based on the exact names in the PyTorch checkpoint.
+    # Updated with the correct '..value' suffix
     weight_mapping = {
         # Patch Embedder
-        "mapper.patch_embeddings.kernel": ("x_embedder.proj.weight", True),
-        "mapper.patch_embeddings.bias": ("x_embedder.proj.bias", False),
+        "mapper.patch_embeddings.kernel..value": ("x_embedder.proj.weight", True),
+        "mapper.patch_embeddings.bias..value": ("x_embedder.proj.bias", False),
 
         # Positional Embedding
         "pos_embed": ("pos_embed", False),
 
         # Time MLP
-        "time_MLP.fc1.kernel": ("t_embedder.mlp.0.weight", True),
-        "time_MLP.fc1.bias": ("t_embedder.mlp.0.bias", False),
-        "time_MLP.fc2.kernel": ("t_embedder.mlp.2.weight", True),
-        "time_MLP.fc2.bias": ("t_embedder.mlp.2.bias", False),
+        "time_MLP.fc1.kernel..value": ("t_embedder.mlp.0.weight", True),
+        "time_MLP.fc1.bias..value": ("t_embedder.mlp.0.bias", False),
+        "time_MLP.fc2.kernel..value": ("t_embedder.mlp.2.weight", True),
+        "time_MLP.fc2.bias..value": ("t_embedder.mlp.2.bias", False),
 
         # Final Layer
-        "final_layer.linear.kernel": ("final_layer.linear.weight", True),
-        "final_layer.linear.bias": ("final_layer.linear.bias", False),
-        # TODO: Map final_layer.linWeights
+        "final_layer.linear.kernel..value": ("final_layer.linear.weight", True),
+        "final_layer.linear.bias..value": ("final_layer.linear.bias", False),
+        "final_layer.linWeights.kernel..value": ("final_layer.adaLN_modulation.1.weight", True),
+        "final_layer.linWeights.bias..value": ("final_layer.adaLN_modulation.1.bias", False),
     }
 
     # Add DiT block mappings
     for i in range(jax_model.n_layers):
         # MHA
-        weight_mapping[f"layers.{i}.MHA.qkv_proj.kernel"] = (f"blocks.{i}.attn.qkv.weight", True)
-        weight_mapping[f"layers.{i}.MHA.qkv_proj.bias"] = (f"blocks.{i}.attn.qkv.bias", False)
-        weight_mapping[f"layers.{i}.MHA.out_proj.kernel"] = (f"blocks.{i}.attn.proj.weight", True)
-        weight_mapping[f"layers.{i}.MHA.out_proj.bias"] = (f"blocks.{i}.attn.proj.bias", False)
+        weight_mapping[f"layers.{i}.MHA.qkv_proj.kernel..value"] = (f"blocks.{i}.attn.qkv.weight", True)
+        weight_mapping[f"layers.{i}.MHA.qkv_proj.bias..value"] = (f"blocks.{i}.attn.qkv.bias", False)
+        weight_mapping[f"layers.{i}.MHA.out_proj.kernel..value"] = (f"blocks.{i}.attn.proj.weight", True)
+        weight_mapping[f"layers.{i}.MHA.out_proj.bias..value"] = (f"blocks.{i}.attn.proj.bias", False)
 
         # MLP
-        weight_mapping[f"layers.{i}.MLP.fc1.kernel"] = (f"blocks.{i}.mlp.fc1.weight", True)
-        weight_mapping[f"layers.{i}.MLP.fc1.bias"] = (f"blocks.{i}.mlp.fc1.bias", False)
-        weight_mapping[f"layers.{i}.MLP.fc2.kernel"] = (f"blocks.{i}.mlp.fc2.weight", True)
-        weight_mapping[f"layers.{i}.MLP.fc2.bias"] = (f"blocks.{i}.mlp.fc2.bias", False)
+        weight_mapping[f"layers.{i}.MLP.fc1.kernel..value"] = (f"blocks.{i}.mlp.fc1.weight", True)
+        weight_mapping[f"layers.{i}.MLP.fc1.bias..value"] = (f"blocks.{i}.mlp.fc1.bias", False)
+        weight_mapping[f"layers.{i}.MLP.fc2.kernel..value"] = (f"blocks.{i}.mlp.fc2.weight", True)
+        weight_mapping[f"layers.{i}.MLP.fc2.bias..value"] = (f"blocks.{i}.mlp.fc2.bias", False)
 
         # Conditioning Parameters (adaLN)
-        # TODO: These are complex and need careful mapping.
-        # The original DiT combines these into a single `adaLN_modulation` layer.
-        # You will need to investigate how to split the weights for your implementation.
-        # weight_mapping[f"layers.{i}.cLinWeights.kernel"] = (f"blocks.{i}.adaLN_modulation.1.weight", True) 
-        # weight_mapping[f"layers.{i}.cScaleWeights.kernel"] = (f"...", True)
+        # This is a guess, you may need to verify the PyTorch model structure
+        weight_mapping[f"layers.{i}.cLinWeights.kernel..value"] = (f"blocks.{i}.adaLN_modulation.1.weight", True)
+        weight_mapping[f"layers.{i}.cLinWeights.bias..value"] = (f"blocks.{i}.adaLN_modulation.1.bias", False)
+        # NOTE: cScaleWeights might not have a direct mapping and could be part of the adaLN_modulation weights.
+        # This requires inspecting the PyTorch model's adaLN_modulation layer.
 
     # --- Conversion Loop ---
     new_flat_state = []
@@ -122,6 +103,11 @@ def convert_weights(pytorch_weights_path, jax_model):
 
             # Convert tensor to numpy array
             value = pt_weights[pt_name].detach().cpu().numpy()
+
+            # Special case for pos_embed shape
+            if pt_name == 'pos_embed' and value.ndim == 3:
+                print("Squeezing extra dimension from pos_embed.")
+                value = np.squeeze(value, axis=0)
 
             # Transpose if necessary
             if should_transpose:
