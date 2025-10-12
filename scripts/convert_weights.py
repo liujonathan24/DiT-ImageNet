@@ -25,13 +25,16 @@ def convert_weights(pytorch_weights_path, jax_model):
     jax_state = nnx.state(jax_model)
     jax_flat_state_list = nnx.graph.flatten(jax_state)
     
-    # Create a dictionary with string keys for easier lookup
     try:
-        jax_flat_state_dict = {".".join(path): value for (path, kind), value in jax_flat_state_list}
+        jax_flat_state_dict = {".".join(item.path): item.value for item in jax_flat_state_list}
     except Exception as e:
-        print("Error processing flattened state. Printing raw state for debugging:")
-        for i, item in enumerate(jax_flat_state_list[:5]):
-            print(f"Item {i}: {item}")
+        print(f"Error creating lookup dictionary: {e}")
+        print("Printing raw flattened state to debug:")
+        if len(jax_flat_state_list) > 0:
+            first_item = jax_flat_state_list[0]
+            print(f"First item: {first_item}")
+            print(f"Type of first item: {type(first_item)}")
+            print(f"Attributes of first item: {dir(first_item)}")
         raise e
 
     print("Available JAX parameter keys:", list(jax_flat_state_dict.keys()))
@@ -82,7 +85,12 @@ def convert_weights(pytorch_weights_path, jax_model):
 
     # --- Conversion Loop ---
     new_jax_params = {}
-    for jax_name, jax_value in jax_flat_state_dict.items():
+    for item in jax_flat_state_list:
+        path = item.path
+        kind = item.kind
+        jax_value = item.value
+        jax_name = ".".join(path)
+        
         if jax_name in weight_mapping:
             pt_name, should_transpose = weight_mapping[jax_name]
 
