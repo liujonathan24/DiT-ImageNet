@@ -44,7 +44,7 @@ def main(args):
 
     config = modelConfig()
     trainconfig = trainConfig()
-    trainconfig.batch_size = 12
+    trainconfig.batch_size = 1 # 12
     diffusion = Diffusion(trainconfig.linear_variance_min, trainconfig.linear_variance_max, trainconfig.tmax)
 
     os.makedirs(args.output_dir, exist_ok=True)
@@ -69,6 +69,21 @@ def main(args):
 
             x_t = modified_x_t + noise_t
             x_t = jnp.clip(x_t, min=-1, max=1)
+
+            if t%200 == 0:
+                restored = sd_vae.decode(torch.tensor(np.array(x_t)).to(device)/0.18215).sample.detach().cpu().numpy()
+                im_arr = np.transpose(restored, (0, 2, 3, 1))
+                print(im_arr.shape)
+                im_arr = im_arr[0,:,:,:]
+                im_arr = np.squeeze(im_arr)
+                print(im_arr.shape)
+        
+                # VAE output is ~[-1, 1], convert to [0, 255] for saving
+                im_arr = np.clip(im_arr, -1.0, 1.0)
+                im_arr = (im_arr + 1) / 2.0
+                im_arr = (im_arr * 255).astype(np.uint8)
+                path = os.path.abspath(os.path.join(experiment_path, "tmp_restored.png"))
+                Image.fromarray(im_arr).save(path) #os.path.join(experiment_path, "tmp_restored.png"))
         # Decode:
         x_t /= 0.18215
         print(f"Final shape is {x_t.shape}") # (12, 4, 32, 32)
@@ -77,12 +92,15 @@ def main(args):
         
         with torch.no_grad():
             img = sd_vae.decode(torch.tensor(np.array(x_t)).to(device)).sample
-        print(f"Decoded image shape: {img.shape}")
         img = img.cpu().numpy()
+
+        print(f"Decoded image shape: {img.shape}")
+        print(f"Image stats after decoding (mean, min, max, var):")
+        print(jnp.mean(img), jnp.min(img), jnp.max(img), jnp.var(img))
 
         for j in range(img.shape[0]):
             # take one image (3, H, W)
-            im_arr = img[j]
+            im_arr = img[j, :, :, :]
 
             # rearrange to (H, W, C)
             im_arr = np.transpose(im_arr, (1, 2, 0))

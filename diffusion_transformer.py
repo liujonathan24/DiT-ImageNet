@@ -82,8 +82,8 @@ class DiTBlock(nnx.Module):
         self.MLP = MLP(config) 
 
         # MLP for conditioning info
-        self.cLinWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size * 4, rngs=nnx.Rngs(0), kernel_init=xavier_init)  
-        self.cScaleWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size * 2, rngs=nnx.Rngs(0), kernel_init=zero_init)
+        self.cLinWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size * 4, rngs=nnx.Rngs(0), kernel_init=zero_init)  
+        self.cScaleWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size * 2, rngs=nnx.Rngs(0), kernel_init=xavier_init)
     
     def __call__(self, x, conditioning):
         """Uses vmap to process batched inputs."""

@@ -1,43 +1,25 @@
-from diffusion_transformer import DiffusionTransformer
-from jax_dataloader import Dataset, DataLoader
+from jax_dataloader import DataLoader
 import jax 
 import jax.numpy as jnp
 from flax import nnx
+import optax
+
+from diffusion_transformer import DiffusionTransformer
+
 from helpers.config import modelConfig, trainConfig
-import optax
 import argparse
-from helpers.preprocess_data_torch import load_latents
-from tqdm import tqdm
 import os
-import optax
 import orbax.checkpoint as ocp
 import time
-import jax_dataloader as jdl
 from helpers.diffusion import Diffusion
 from vae.import_sd_vae_torch import get_sd_vae
 from PIL import Image
 import numpy as np
 import torch
-from diffusion_transformer import DiffusionTransformer
-import jax 
-import jax.numpy as jnp
-from flax import nnx
-from helpers.config import modelConfig, trainConfig
-import optax
-import argparse
-from helpers.preprocess_data_torch import load_latents, return_dataloader, load_data
 from tqdm import tqdm
-import os
 from glob import glob
-from copy import deepcopy
-import optax
-import orbax.checkpoint as ocp
-import time
-import jax_dataloader as jdl
-import json
 from helpers.checkpoint import save_checkpoint, restore_checkpoint
 from helpers.logging_utils import setup_logging
-from helpers.diffusion import Diffusion
 import logging
 from jax_dataloader.datasets import ArrayDataset
 
@@ -128,11 +110,9 @@ def main(args):
             batch = batch[0]  
             # print(batch.shape)
            
-
             # Encode using sd_vae:
             # batch = 0.18215 * sd_vae.encode(batch).latent_dist.sample()
             # assert batch.shape == (trainconfig.batch_size, 4, 32, 32)
-
 
             # IF testing restoration.
             if test_restore:
