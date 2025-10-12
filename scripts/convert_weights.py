@@ -15,27 +15,27 @@ def get_jax_state_dict(model):
     state = nnx.state(model)
     return nnx.graph.flatten(state)
 
+import jax.tree_util
+
 def convert_weights(pytorch_weights_path, jax_model):
     """Converts and loads PyTorch weights into the JAX model."""
     
     # Load PyTorch weights
     pt_weights = torch.load(pytorch_weights_path, map_location="cpu")
 
-    # Get JAX model state
+    # Get the JAX model's state
     jax_state = nnx.state(jax_model)
-    jax_flat_state_list = nnx.graph.flatten(jax_state)
     
-    try:
-        jax_flat_state_dict = {".".join(item.path): item.value for item in jax_flat_state_list}
-    except Exception as e:
-        print(f"Error creating lookup dictionary: {e}")
-        print("Printing raw flattened state to debug:")
-        if len(jax_flat_state_list) > 0:
-            first_item = jax_flat_state_list[0]
-            print(f"First item: {first_item}")
-            print(f"Type of first item: {type(first_item)}")
-            print(f"Attributes of first item: {dir(first_item)}")
-        raise e
+    # Flatten the state using JAX's tree utility to get paths and values
+    flat_state_with_paths, treedef = jax.tree_util.tree_flatten_with_path(jax_state)
+
+    # Create a lookup dictionary with string paths
+    jax_flat_state_dict = {}
+    for key_path, value in flat_state_with_paths:
+        path_str = ".".join([str(k.idx) if k.idx is not None else str(k.key) for k in key_path])
+        # Remove leading dot if it exists
+        if path_str.startswith('.'): path_str = path_str[1:]
+        jax_flat_state_dict[path_str] = value
 
     print("Available JAX parameter keys:", list(jax_flat_state_dict.keys()))
 
@@ -80,26 +80,24 @@ def convert_weights(pytorch_weights_path, jax_model):
         # TODO: These are complex and need careful mapping.
         # The original DiT combines these into a single `adaLN_modulation` layer.
         # You will need to investigate how to split the weights for your implementation.
-        # weight_mapping[f"layers.{i}.cLinWeights.kernel"] = (f"blocks.{i}.adaLN_modulation.1.weight", True)
+        # weight_mapping[f"layers.{i}.cLinWeights.kernel"] = (f"blocks.{i}.adaLN_modulation.1.weight", True) 
         # weight_mapping[f"layers.{i}.cScaleWeights.kernel"] = (f"...", True)
 
     # --- Conversion Loop ---
-    new_jax_params = {}
-    for item in jax_flat_state_list:
-        path = item.path
-        kind = item.kind
-        jax_value = item.value
-        jax_name = ".".join(path)
-        
-        if jax_name in weight_mapping:
-            pt_name, should_transpose = weight_mapping[jax_name]
+    new_flat_state = []
+    for key_path, jax_value in flat_state_with_paths:
+        path_str = ".".join([str(k.idx) if k.idx is not None else str(k.key) for k in key_path])
+        if path_str.startswith('.'): path_str = path_str[1:]
+
+        if path_str in weight_mapping:
+            pt_name, should_transpose = weight_mapping[path_str]
 
             if pt_name not in pt_weights:
-                print(f"Warning: PyTorch weight {pt_name} not found for JAX param {jax_name}. Using original JAX param.")
-                new_jax_params[jax_name] = jax_value
+                print(f"Warning: PyTorch weight {pt_name} not found for JAX param {path_str}. Using original JAX param.")
+                new_flat_state.append(jax_value)
                 continue
 
-            print(f"Converting: {pt_name} -> {jax_name}")
+            print(f"Converting: {pt_name} -> {path_str}")
 
             # Convert tensor to numpy array
             value = pt_weights[pt_name].detach().cpu().numpy()
@@ -108,24 +106,24 @@ def convert_weights(pytorch_weights_path, jax_model):
             if should_transpose:
                 if value.ndim == 2: # For Linear layers
                     value = value.T
-                elif value.ndim == 4 and jax_value.ndim == 4: # For Conv layers
+                elif value.ndim == 4 and hasattr(jax_value, 'ndim') and jax_value.ndim == 4: # For Conv layers
                     # PyTorch: (out_channels, in_channels, kernel_height, kernel_width)
                     # JAX/Flax: (kernel_height, kernel_width, in_channels, out_channels)
                     value = np.transpose(value, (2, 3, 1, 0))
 
             # Check shapes
-            if value.shape != jax_value.shape:
-                print(f"Shape mismatch for {jax_name}: JAX is {jax_value.shape}, PyTorch is {value.shape} after potential transpose. Skipping.")
-                new_jax_params[jax_name] = jax_value
+            if hasattr(jax_value, 'shape') and value.shape != jax_value.shape:
+                print(f"Shape mismatch for {path_str}: JAX is {jax_value.shape}, PyTorch is {value.shape} after potential transpose. Skipping.")
+                new_flat_state.append(jax_value)
                 continue
 
-            new_jax_params[jax_name] = jnp.asarray(value)
+            new_flat_state.append(jnp.asarray(value))
         else:
             # Keep original parameter if no mapping is defined
-            new_jax_params[jax_name] = jax_value
+            new_flat_state.append(jax_value)
 
-    # Reconstruct the state dict from the list of (key, value) tuples
-    new_jax_state = nnx.graph.unflatten(list(new_jax_params.items()))
+    # Reconstruct the state using the new flattened list of values
+    new_jax_state = jax.tree_util.tree_unflatten(treedef, new_flat_state)
 
     print("\nWeight conversion process finished.")
     print("Please review the warnings and fill in the missing mappings (TODOs).")
