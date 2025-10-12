@@ -35,6 +35,10 @@ def restore_checkpoint(model_path, modelconfig: modelConfig, trainconfig: trainC
         ocp.utils.to_shape_dtype_struct, train_state
     )
 
+    print("--- Abstract Target Architecture (from Orbax's perspective) ---")
+    print(abstract_train_state)
+    print("-------------------------------------------------------------")
+
     path = os.path.abspath(model_path)
     options = ocp.CheckpointManagerOptions(max_to_keep=3, save_interval_steps=2)
     mngr = ocp.CheckpointManager(path, options=options)

@@ -150,25 +150,27 @@ class DiTPatch(nnx.Module):
         self.token_length = config.token_length
         self.DiT_hidden_size = config.DiT_hidden_size
         
-        self.patch_embeddings = nnx.Conv(
-            in_features=config.image_channels,         
-            out_features=config.DiT_hidden_size,      
-            kernel_size=(config.patch_size, config.patch_size),
-            strides=(config.patch_size, config.patch_size),
-            padding='VALID',                           
-            rngs=nnx.Rngs(rng),
-        )
+        # For latent-space DiT, this should be a linear projection.
+        self.proj = nnx.Linear(config.image_channels, config.DiT_hidden_size, kernel_init=xavier_init, rngs=nnx.Rngs(rng))
 
     def convert_to_patches(self, input):
+        # Reshapes the output of the final transformer layer back to an image-like latent.
         x = input.reshape((self.output_dim, self.output_dim, self.patch_size, self.patch_size, self.output_channels))
         x = jnp.einsum('hwpqc->chpwq', x)
         imgs = x.reshape((self.output_channels, self.output_dim*self.patch_size, self.output_dim*self.patch_size))
         return imgs
     
     def convert_to_stream(self, input):
-        input = jnp.einsum('chw->hwc', input)
-        input = self.patch_embeddings(input)
-        input = input.reshape(self.token_length, self.DiT_hidden_size)
+        # input shape: (C, H, W) e.g. (4, 16, 16)
+        C, H, W = input.shape
+        assert H * W == self.token_length, f"Input height*width {H*W} does not match token_length {self.token_length}"
+        
+        # Reshape to (num_tokens, channels)
+        input = input.reshape(C, H * W)
+        input = jnp.transpose(input) # (H*W, C) = (token_length, image_channels)
+        
+        # Project to DiT hidden size
+        input = self.proj(input) # (token_length, DiT_hidden_size)
         return input
 
 class DiffusionTransformer(nnx.Module):
