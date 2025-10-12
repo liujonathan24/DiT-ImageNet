@@ -22,6 +22,11 @@ def save_checkpoint(mngr, model, optimizer, epoch, trainconfig, args):
 
 def restore_checkpoint(model_path, modelconfig: modelConfig, trainconfig: trainConfig, gpu_device):
     DiTmodel = DiffusionTransformer(modelconfig)
+
+    print("--- Architecture of model being restored ---")
+    print(nnx.state(DiTmodel))
+    print("------------------------------------------")
+
     status = nnx.state(DiTmodel)
     train_state = jax.tree_util.tree_map(np.zeros_like, status)
     create_sharded_array = lambda x: jax.device_put(x, gpu_device)
