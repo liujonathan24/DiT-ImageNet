@@ -10,15 +10,6 @@ from diffusion_transformer import DiffusionTransformer
 from helpers.config import modelConfig
 from helpers.checkpoint import save_checkpoint
 
-def create_dit_xl_config():
-    """Creates a modelConfig for DiT-XL."""
-    config = modelConfig()
-    config.n_layers = 28
-    config.n_heads = 16
-    config.DiT_hidden_size = 1152
-    config.patch_size = 2
-    return config
-
 def get_jax_state_dict(model):
     """Returns a flattened dictionary of the JAX model's state."""
     state = nnx.state(model)
@@ -32,13 +23,17 @@ def convert_weights(pytorch_weights_path, jax_model):
 
     # Get JAX model state
     jax_state = nnx.state(jax_model)
+    jax_flat_state_list = nnx.graph.flatten(jax_state)
+    jax_flat_state_dict = dict(jax_flat_state_list)
+
+    print("Available JAX parameter keys:", list(jax_flat_state_dict.keys()))
 
     # --- Weight Mapping ---
     # This mapping is a starting point and may need adjustment
     # based on the exact names in the PyTorch checkpoint.
     weight_mapping = {
         # Patch Embedder
-        "mapper.patch_embeddings.kernel": ("x_embedder.proj.weight", True), # Transpose Conv weights
+        "mapper.patch_embeddings.kernel": ("x_embedder.proj.weight", True),
         "mapper.patch_embeddings.bias": ("x_embedder.proj.bias", False),
 
         # Positional Embedding
@@ -78,47 +73,54 @@ def convert_weights(pytorch_weights_path, jax_model):
         # weight_mapping[f"layers.{i}.cScaleWeights.kernel"] = (f"...", True)
 
     # --- Conversion Loop ---
-    jax_flat_state = nnx.graph.flatten(jax_state)
+    new_jax_params = {}
+    for jax_name, jax_value in jax_flat_state_dict.items():
+        if jax_name in weight_mapping:
+            pt_name, should_transpose = weight_mapping[jax_name]
 
-    for jax_name, (pt_name, should_transpose) in weight_mapping.items():
-        if pt_name not in pt_weights:
-            print(f"Warning: PyTorch weight {pt_name} not found.")
-            continue
+            if pt_name not in pt_weights:
+                print(f"Warning: PyTorch weight {pt_name} not found for JAX param {jax_name}. Using original JAX param.")
+                new_jax_params[jax_name] = jax_value
+                continue
 
-        if jax_name not in jax_flat_state:
-            print(f"Warning: JAX parameter {jax_name} not found.")
-            continue
+            print(f"Converting: {pt_name} -> {jax_name}")
 
-        print(f"Converting: {pt_name} -> {jax_name}")
+            # Convert tensor to numpy array
+            value = pt_weights[pt_name].detach().cpu().numpy()
 
-        # Convert tensor to numpy array
-        value = pt_weights[pt_name].detach().cpu().numpy()
+            # Transpose if necessary
+            if should_transpose:
+                if value.ndim == 2: # For Linear layers
+                    value = value.T
+                elif value.ndim == 4 and jax_value.ndim == 4: # For Conv layers
+                    # PyTorch: (out_channels, in_channels, kernel_height, kernel_width)
+                    # JAX/Flax: (kernel_height, kernel_width, in_channels, out_channels)
+                    value = np.transpose(value, (2, 3, 1, 0))
 
-        # Transpose if necessary
-        if should_transpose:
-            if value.ndim == 2: # For Linear layers
-                value = value.T
-            elif value.ndim == 4: # For Conv layers (e.g., HWIO -> OIHW)
-                value = np.transpose(value, (3, 2, 0, 1))
+            # Check shapes
+            if value.shape != jax_value.shape:
+                print(f"Shape mismatch for {jax_name}: JAX is {jax_value.shape}, PyTorch is {value.shape} after potential transpose. Skipping.")
+                new_jax_params[jax_name] = jax_value
+                continue
 
-        # Update JAX state
-        keys = jax_name.split('.')
-        temp_state = jax_state
-        for key in keys[:-1]:
-            temp_state = temp_state[key]
-        temp_state[keys[-1]] = jnp.asarray(value)
+            new_jax_params[jax_name] = jnp.asarray(value)
+        else:
+            # Keep original parameter if no mapping is defined
+            new_jax_params[jax_name] = jax_value
+
+    # Reconstruct the state dict from the list of (key, value) tuples
+    new_jax_state = nnx.graph.unflatten(list(new_jax_params.items()))
 
     print("\nWeight conversion process finished.")
     print("Please review the warnings and fill in the missing mappings (TODOs).")
 
-    return jax_state
+    return new_jax_state
 
 def main(args):
     # 1. Create JAX model with DiT-XL config
     print("Creating DiT-XL model configuration...")
-    model_config = create_dit_xl_config()
-    rng = jax.random.PRNGKey(0)
-    jax_model = DiffusionTransformer(model_config, rng)
+    model_config = modelConfig(type="DiT-XL")
+    jax_model = DiffusionTransformer(model_config)
 
     # 2. Convert weights
     print(f"\nStarting weight conversion from: {args.pytorch_checkpoint_path}")
@@ -145,7 +147,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Convert PyTorch DiT weights to JAX.")
-    parser.add_argument("--pytorch_checkpoint_path", type=str, required=True, help="Path to the PyTorch .pt or .pth checkpoint file.")
-    parser.add_argument("--output_dir", type=str, required=True, help="Directory to save the converted JAX checkpoint.")
+    parser.add_argument("--pytorch_checkpoint_path", "-pt", type=str, required=True, help="Path to the PyTorch .pt or .pth checkpoint file.")
+    parser.add_argument("--output_dir", "-o", type=str, required=True, help="Directory to save the converted JAX checkpoint.")
     args = parser.parse_args()
     main(args)
