@@ -32,12 +32,13 @@ class modelConfig:
 
             # output details
             self.output_dim = int(self.input_size/self.patch_size)
-            self.output_channels = 4
+            self.output_channels = 8
 
             # Architecture details
             self.n_layers = 28
             self.n_heads = 16
             self.DiT_hidden_size = 1152
+            self.time_embed_dim = 256
             self.MLP_hidden_size = self.DiT_hidden_size * 4 # TODO: consider adjusting this. 
             self.token_length = int((self.input_size/self.patch_size)**2)
 
