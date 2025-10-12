@@ -5,12 +5,15 @@ beartype==0.21.0
 certifi==2025.8.3
 charset-normalizer==3.4.3
 chex==0.1.91
+contourpy==1.3.3
+cycler==0.12.1
 dataclasses-json==0.6.7
 diffusers==0.35.1
--e git+https://github.com/liujonathan24/DiT-ImageNet.git@720aab7b78325c8b10e6a68d8e71effbaeded436#egg=DiT_ImageNet
+-e git+https://github.com/liujonathan24/DiT-ImageNet.git@310853e437f0a0c79977bf9374e0876f00719b32#egg=DiT_ImageNet
 etils==1.13.0
 filelock==3.19.1
 flax @ git+https://github.com/google/flax.git@49f51162c13be6f3dfe7525fcb48a1afffa2121c
+fonttools==4.60.1
 fsspec==2025.9.0
 hf-xet==1.1.10
 huggingface-hub==0.35.0
@@ -26,9 +29,11 @@ jaxlib==0.7.1
 jaxtyping==0.3.2
 Jinja2==3.1.6
 kagglehub==0.3.13
+kiwisolver==1.4.9
 markdown-it-py==4.0.0
 MarkupSafe==3.0.2
 marshmallow==3.26.1
+matplotlib==3.10.6
 mdurl==0.1.2
 ml_dtypes==0.5.3
 mpmath==1.3.0
@@ -59,12 +64,16 @@ orbax==0.1.9
 orbax-checkpoint @ git+https://github.com/google/orbax/@f2da1b496c2fdccb64f94e8b7191d8ed328b26bb#subdirectory=checkpoint
 orbax-export==0.0.8
 packaging==25.0
+pandas==2.3.3
 pillow==11.3.0
 plum-dispatch==2.5.7
 protobuf==6.32.1
 psutil==7.1.0
 ptflops==0.7.5
 Pygments==2.19.2
+pyparsing==3.2.5
+python-dateutil==2.9.0.post0
+pytz==2025.2
 PyYAML==6.0.2
 regex==2025.9.18
 requests==2.32.5
@@ -73,6 +82,7 @@ safetensors==0.6.2
 scipy==1.16.2
 setuptools==80.9.0
 simplejson==3.20.1
+six==1.17.0
 sympy==1.14.0
 tensorstore==0.1.76
 toolz==1.0.0
@@ -83,6 +93,7 @@ treescope==0.1.10
 triton==3.4.0
 typing-inspect==0.9.0
 typing_extensions==4.15.0
+tzdata==2025.2
 urllib3==2.5.0
 wadler_lindig==0.1.7
 wheel==0.45.1
