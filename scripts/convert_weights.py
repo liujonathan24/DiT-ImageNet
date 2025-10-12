@@ -115,6 +115,9 @@ def convert_weights(pytorch_weights_path, jax_model):
     print("Please review the warnings and fill in the missing mappings (TODOs).")
 
     return new_jax_state
+    print("Please review the warnings and fill in the missing mappings (TODOs).")
+
+    return new_jax_state
 
 def main(args):
     # 1. Create JAX model with DiT-XL config
