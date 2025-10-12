@@ -5,17 +5,20 @@ import numpy as np
 from flax import nnx
 import os
 import argparse
+import jax.tree_util
 
 from diffusion_transformer import DiffusionTransformer
 from helpers.config import modelConfig
 from helpers.checkpoint import save_checkpoint
 
-def get_jax_state_dict(model):
-    """Returns a flattened dictionary of the JAX model's state."""
-    state = nnx.state(model)
-    return nnx.graph.flatten(state)
-
-import jax.tree_util
+def create_dit_xl_config():
+    """Creates a modelConfig for DiT-XL."""
+    config = modelConfig()
+    config.n_layers = 28
+    config.n_heads = 16
+    config.DiT_hidden_size = 1152
+    config.patch_size = 2
+    return config
 
 def convert_weights(pytorch_weights_path, jax_model):
     """Converts and loads PyTorch weights into the JAX model."""
@@ -32,7 +35,16 @@ def convert_weights(pytorch_weights_path, jax_model):
     # Create a lookup dictionary with string paths
     jax_flat_state_dict = {}
     for key_path, value in flat_state_with_paths:
-        path_str = ".".join([str(k.idx) if k.idx is not None else str(k.key) for k in key_path])
+        path_parts = []
+        for k in key_path:
+            if hasattr(k, 'idx'):
+                path_parts.append(str(k.idx))
+            elif hasattr(k, 'key'):
+                path_parts.append(str(k.key))
+            else:
+                path_parts.append(str(k))
+        path_str = ".".join(path_parts)
+
         # Remove leading dot if it exists
         if path_str.startswith('.'): path_str = path_str[1:]
         jax_flat_state_dict[path_str] = value
@@ -138,15 +150,13 @@ def convert_weights(pytorch_weights_path, jax_model):
     print("Please review the warnings and fill in the missing mappings (TODOs).")
 
     return new_jax_state
-    print("Please review the warnings and fill in the missing mappings (TODOs).")
-
-    return new_jax_state
 
 def main(args):
     # 1. Create JAX model with DiT-XL config
     print("Creating DiT-XL model configuration...")
-    model_config = modelConfig(type="DiT-XL")
-    jax_model = DiffusionTransformer(model_config)
+    model_config = create_dit_xl_config()
+    rng = jax.random.PRNGKey(0)
+    jax_model = DiffusionTransformer(model_config, rng)
 
     # 2. Convert weights
     print(f"\nStarting weight conversion from: {args.pytorch_checkpoint_path}")
@@ -173,7 +183,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Convert PyTorch DiT weights to JAX.")
-    parser.add_argument("--pytorch_checkpoint_path", "-pt", type=str, required=True, help="Path to the PyTorch .pt or .pth checkpoint file.")
-    parser.add_argument("--output_dir", "-o", type=str, required=True, help="Directory to save the converted JAX checkpoint.")
+    parser.add_argument("--pytorch_checkpoint_path", type=str, required=True, help="Path to the PyTorch .pt or .pth checkpoint file.")
+    parser.add_argument("--output_dir", type=str, required=True, help="Directory to save the converted JAX checkpoint.")
     args = parser.parse_args()
     main(args)
