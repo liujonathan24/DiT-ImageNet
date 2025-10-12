@@ -8,6 +8,8 @@ import argparse
 import os
 from helpers.checkpoint import save_checkpoint, restore_checkpoint
 
+from flax import nnx
+
 def print_param_stats(params, path=''):
     for key, value in params.items():
         new_path = f"{path}/{key}" if path else key
@@ -37,7 +39,7 @@ def main(args):
         model, extra_params = restore_checkpoint(models_dir, modelconfig, trainconfig, gpu_device)
     else:
         # Create the model
-        model = DiffusionTransformer(modelconfig)
+        model = DiffusionTransformer(modelconfig, jax.random.PRNGKey(0))
 
     # Get the model's parameters
     params = nnx.state(model)

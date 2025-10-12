@@ -72,7 +72,7 @@ def main(args):
         models_dir = os.path.abspath(os.path.join(experiment_path, "models"))
         os.makedirs(models_dir)
 
-        DiTmodel = DiffusionTransformer(modelconfig)
+        DiTmodel = DiffusionTransformer(modelconfig, modelconfig.rngs.params())
         start_epoch = 0
     
     # Set up logging and log initial experiment information.
