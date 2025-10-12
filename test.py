@@ -25,7 +25,7 @@ def main(args):
 
     
 
-    modelconfig = modelConfig()
+    modelconfig = modelConfig(type='DiT-XL')
     trainconfig = trainConfig()
     model = DiffusionTransformer(modelconfig)
 

@@ -99,14 +99,14 @@ def convert_weights(pytorch_weights_path, jax_model):
                 new_flat_state.append(jax_value)
                 continue
 
-            print(f"Converting: {pt_name} -> {path_str}")
+            # print(f"Converting: {pt_name} -> {path_str}")
 
             # Convert tensor to numpy array
             value = pt_weights[pt_name].detach().cpu().numpy()
 
             # Special case for pos_embed shape
             if pt_name == 'pos_embed' and value.ndim == 3:
-                print("Squeezing extra dimension from pos_embed.")
+                # print("Squeezing extra dimension from pos_embed.")
                 value = np.squeeze(value, axis=0)
 
             # Transpose if necessary
@@ -120,6 +120,7 @@ def convert_weights(pytorch_weights_path, jax_model):
 
             # Check shapes
             if hasattr(jax_value, 'shape') and value.shape != jax_value.shape:
+                print(f"Converting: {pt_name} -> {path_str}")
                 print(f"Shape mismatch for {path_str}: JAX is {jax_value.shape}, PyTorch is {value.shape} after potential transpose. Skipping.")
                 new_flat_state.append(jax_value)
                 continue
