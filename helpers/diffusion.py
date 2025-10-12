@@ -5,8 +5,8 @@ class Diffusion():
         self.steps = steps
         self.variance_min = variance_min
         self.variance_max = variance_max
-        self.variances = jnp.linspace(variance_min, variance_max, steps)
-        self.alphas = 1 - self.variances
+        self.betas = jnp.linspace(variance_min, variance_max, steps)
+        self.alphas = 1 - self.betas
         self.alpha_bars = jnp.cumprod(self.alphas)
 
     def get_alpha_bar(self, t):
