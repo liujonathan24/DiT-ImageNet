@@ -154,9 +154,8 @@ def convert_weights(pytorch_weights_path, jax_model):
 def main(args):
     # 1. Create JAX model with DiT-XL config
     print("Creating DiT-XL model configuration...")
-    model_config = create_dit_xl_config()
-    rng = jax.random.PRNGKey(0)
-    jax_model = DiffusionTransformer(model_config, rng)
+    model_config = modelConfig(type="DiT-XL")
+    jax_model = DiffusionTransformer(model_config)
 
     # 2. Convert weights
     print(f"\nStarting weight conversion from: {args.pytorch_checkpoint_path}")
@@ -183,7 +182,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Convert PyTorch DiT weights to JAX.")
-    parser.add_argument("--pytorch_checkpoint_path", type=str, required=True, help="Path to the PyTorch .pt or .pth checkpoint file.")
-    parser.add_argument("--output_dir", type=str, required=True, help="Directory to save the converted JAX checkpoint.")
+    parser.add_argument("--pytorch_checkpoint_path", "-pt", type=str, required=True, help="Path to the PyTorch .pt or .pth checkpoint file.")
+    parser.add_argument("--output_dir", "-o", type=str, required=True, help="Directory to save the converted JAX checkpoint.")
     args = parser.parse_args()
     main(args)
