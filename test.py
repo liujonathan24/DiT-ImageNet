@@ -1,17 +1,9 @@
 from diffusion_transformer import DiffusionTransformer
 import jax 
 import jax.numpy as jnp
-from flax import nnx
 from helpers.config import modelConfig, trainConfig
-import optax
 import argparse
-from helpers.preprocess_data_torch import load_latents
-from tqdm import tqdm
 import os
-import optax
-import orbax.checkpoint as ocp
-import time
-import jax_dataloader as jdl
 from helpers.diffusion import Diffusion
 from vae.import_sd_vae_torch import get_sd_vae
 from PIL import Image
@@ -58,17 +50,20 @@ def main(args):
             
             # t = jnp.ones((trainconfig.batch_size)) * t
             # print(x_t.shape, t.shape)
-            t_vec = jnp.ones((trainconfig.batch_size)) * (t-1)
+            t_vec = jnp.ones((trainconfig.batch_size)) * t
             prediction = model(x_t, t_vec)
-            modified_x_t = x_t - prediction * (1-diffusion.alphas[t-1])/(jnp.sqrt(1-diffusion.alpha_bars[t-1]))
+            modified_x_t = x_t - prediction * (1-diffusion.alphas[t-1])/jnp.sqrt(1-diffusion.alpha_bars[t-1])
 
             modified_x_t *= 1/jnp.sqrt(diffusion.alphas[t-1])
-
-            z_t = jax.random.normal(rngs, shape=(trainconfig.batch_size, config.image_channels, config.input_size, config.input_size)) if t >1 else jnp.zeros((trainconfig.batch_size, config.image_channels, config.input_size, config.input_size))
+            if t >1:
+                z_t = jax.random.normal(rngs, shape=(trainconfig.batch_size, config.image_channels, config.input_size, config.input_size))
+            else:
+                z_t = jnp.zeros((trainconfig.batch_size, config.image_channels, config.input_size, config.input_size))
+            
             noise_t = jnp.sqrt(diffusion.variances[t-1]) * z_t
 
             x_t = modified_x_t + noise_t
-            x_t = jnp.clip(x_t, min=-1, max=1)
+            # x_t = jnp.clip(x_t, min=-1, max=1)
 
             if t%200 == 0:
                 restored = sd_vae.decode(torch.tensor(np.array(x_t)).to(device)/0.18215).sample.detach().cpu().numpy()
@@ -82,7 +77,7 @@ def main(args):
                 im_arr = np.clip(im_arr, -1.0, 1.0)
                 im_arr = (im_arr + 1) / 2.0
                 im_arr = (im_arr * 255).astype(np.uint8)
-                path = os.path.abspath(os.path.join(experiment_path, "tmp_restored.png"))
+                path = os.path.abspath(os.path.join(args.output_dir, "tmp_restored.png"))
                 Image.fromarray(im_arr).save(path) #os.path.join(experiment_path, "tmp_restored.png"))
         # Decode:
         x_t /= 0.18215
