@@ -236,6 +236,12 @@ class DiffusionTransformer(nnx.Module):
         return x
             
 
+    def get_weights(self):
+        return self.get_state()
+
+    def set_weights(self, weights):
+        self.update_state(weights)
+
     def __call__(self, x, conditioning): 
         """Uses vmap to process batched inputs."""
         func = lambda x, conditioning: self.forward(x, conditioning)
