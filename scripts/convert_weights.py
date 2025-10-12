@@ -24,7 +24,15 @@ def convert_weights(pytorch_weights_path, jax_model):
     # Get JAX model state
     jax_state = nnx.state(jax_model)
     jax_flat_state_list = nnx.graph.flatten(jax_state)
-    jax_flat_state_dict = dict(jax_flat_state_list)
+    
+    # Create a dictionary with string keys for easier lookup
+    try:
+        jax_flat_state_dict = {".".join(path): value for (path, kind), value in jax_flat_state_list}
+    except Exception as e:
+        print("Error processing flattened state. Printing raw state for debugging:")
+        for i, item in enumerate(jax_flat_state_list[:5]):
+            print(f"Item {i}: {item}")
+        raise e
 
     print("Available JAX parameter keys:", list(jax_flat_state_dict.keys()))
 
