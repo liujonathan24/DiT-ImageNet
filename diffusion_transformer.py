@@ -118,7 +118,7 @@ class DiTFinalLayer(nnx.Module):
         self.LayerNorm = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(ln_rng), use_scale=False, use_bias=False)
         # print("init final layer")
         # print(config.patch_size, config.output_dim)
-        self.linear = nnx.Linear(config.DiT_hidden_size, config.patch_size**2*config.output_channels, kernel_init=zero_init, rngs=nnx.Rngs(linear_rng)) 
+        self.linear = nnx.Linear(config.DiT_hidden_size, config.patch_size**2*config.output_channels, kernel_init=xavier_init, rngs=nnx.Rngs(linear_rng)) 
         self.linWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size*2, rngs=nnx.Rngs(lin_weights_rng), kernel_init=zero_init)
 
     def forward(self, x, conditioning):
@@ -191,8 +191,8 @@ class DiffusionTransformer(nnx.Module):
         # The original formula pos / 10000^(2i/d_model) is equivalent to pos * (1 / 10000^(2i/d_model)).
         # I use the below version for numerical stability
         div_term = jnp.exp(jnp.arange(0, self.DiT_hidden_size, 2) * -(jnp.log(10000.0) / self.DiT_hidden_size))
-        print(f"div_term: {div_term}")
-        print(f"position: {position}")
+        # print(f"div_term: {div_term}")
+        # print(f"position: {position}")
         
         pe = jnp.zeros((self.length, self.DiT_hidden_size))
         pe.at[:, 0::2].set(jnp.sin(position * div_term))
