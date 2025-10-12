@@ -167,12 +167,12 @@ class DiTPatch(nnx.Module):
 
 class DiffusionTransformer(nnx.Module):
     """Diffusion Transformer"""
-    def __init__(self, config: modelConfig, rng: jax.random.PRNGKey):
+    def __init__(self, config: modelConfig):
         self.length = config.token_length 
         self.DiT_hidden_size = config.DiT_hidden_size
         self.n_layers = config.n_layers
 
-        rng, layer_rng, final_rng, mapper_rng, time_mlp_rng = jax.random.split(rng, 5)
+        rng, layer_rng, final_rng, mapper_rng, time_mlp_rng = jax.random.split(config.rngs.params(), 5)
         layer_rngs = jax.random.split(layer_rng, self.n_layers)
 
         self.layers = nnx.List([
