@@ -78,23 +78,21 @@ class DiTBlock(nnx.Module):
         """
         
         # self.config = config
-        ln1_rng, ln2_rng, mha_rng, mlp_rng, cLin_rng, cScale_rng = jax.random.split(rng, 6)
+        ln1_rng, ln2_rng, mha_rng, mlp_rng, cLin_rng = jax.random.split(rng, 5)
         self.LayerNorm1 = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(ln1_rng), use_scale=False, use_bias=False)
         self.LayerNorm2 = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(ln2_rng), use_scale=False, use_bias=False)
         self.MHA = MHA(config, mha_rng)
         self.MLP = MLP(config, mlp_rng) 
 
         # MLP for conditioning info
-        self.cLinWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size * 4, rngs=nnx.Rngs(cLin_rng), kernel_init=zero_init)  
-        self.cScaleWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size * 2, rngs=nnx.Rngs(cScale_rng), kernel_init=xavier_init)
+        self.cLinWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size * 6, rngs=nnx.Rngs(cLin_rng), kernel_init=zero_init)  
     
     def __call__(self, x, conditioning):
         """Uses vmap to process batched inputs."""
         return self.forward(x, conditioning)
 
     def forward(self, x, conditioning):
-        alpha1, beta1, alpha2, beta2 = self.cLinWeights(nnx.silu(conditioning)).reshape((4, -1))
-        gamma1, gamma2 = self.cScaleWeights(nnx.silu(conditioning)).reshape((2, -1))
+        alpha1, beta1, gamma1, alpha2, beta2, gamma2 = self.cLinWeights(nnx.silu(conditioning)).reshape((6, -1))
 
         tmp = self.LayerNorm1(x)
         tmp = (alpha1+1)*tmp + beta1
