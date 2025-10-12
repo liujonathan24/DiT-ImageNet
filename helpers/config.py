@@ -1,24 +1,46 @@
 from flax import nnx
 class modelConfig:
-    def __init__(self):
-        self.model_type = 'DiT-S'
-        self.rngs = nnx.Rngs(params=42)
+    def __init__(self, type='DiT-S'):
+        if type == 'DiT-S':
+            self.model_type = 'DiT-S'
+            self.rngs = nnx.Rngs(params=42)
 
-        # Patch details
-        self.input_size = 32
-        self.image_channels = 4
-        self.patch_size = 2 # change to 4
+            # Patch details
+            self.input_size = 32
+            self.image_channels = 4
+            self.patch_size = 2 # change to 4
 
-        # output details
-        self.output_dim = int(self.input_size/self.patch_size)
-        self.output_channels = 4
+            # output details
+            self.output_dim = int(self.input_size/self.patch_size)
+            self.output_channels = 4
 
-        # Architecture details
-        self.n_layers = 12
-        self.n_heads = 6
-        self.DiT_hidden_size = 384
-        self.MLP_hidden_size = self.DiT_hidden_size * 4 # TODO: consider adjusting this. 
-        self.token_length = int((self.input_size/self.patch_size)**2)
+            # Architecture details
+            self.n_layers = 12
+            self.n_heads = 6
+            self.DiT_hidden_size = 384
+            self.MLP_hidden_size = self.DiT_hidden_size * 4 # TODO: consider adjusting this. 
+            self.token_length = int((self.input_size/self.patch_size)**2)
+        elif type == 'DiT-XL':
+
+            self.model_type = 'DiT-XL'
+            self.rngs = nnx.Rngs(params=42)
+
+            # Patch details
+            self.input_size = 32
+            self.image_channels = 4
+            self.patch_size = 2
+
+            # output details
+            self.output_dim = int(self.input_size/self.patch_size)
+            self.output_channels = 4
+
+            # Architecture details
+            self.n_layers = 28
+            self.n_heads = 16
+            self.DiT_hidden_size = 1152
+            self.MLP_hidden_size = self.DiT_hidden_size * 4 # TODO: consider adjusting this. 
+            self.token_length = int((self.input_size/self.patch_size)**2)
+
 
     def to_dict(self):
         # Return a serializable dict representation, excluding non-serializable fields
