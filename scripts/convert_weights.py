@@ -86,7 +86,16 @@ def convert_weights(pytorch_weights_path, jax_model):
     # --- Conversion Loop ---
     new_flat_state = []
     for key_path, jax_value in flat_state_with_paths:
-        path_str = ".".join([str(k.idx) if k.idx is not None else str(k.key) for k in key_path])
+        path_parts = []
+        for k in key_path:
+            if hasattr(k, 'idx'):
+                path_parts.append(str(k.idx))
+            elif hasattr(k, 'key'):
+                path_parts.append(str(k.key))
+            else:
+                path_parts.append(str(k))
+        path_str = ".".join(path_parts)
+
         if path_str.startswith('.'): path_str = path_str[1:]
 
         if path_str in weight_mapping:
