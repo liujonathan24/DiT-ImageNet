@@ -243,9 +243,24 @@ class DiffusionTransformer(nnx.Module):
     def set_weights(self, weights):
         nnx.update(self, weights)
 
-    def __call__(self, x, timestep, y): 
-        func = lambda x, timestep, y: self.forward(x, timestep, y)
-        return vmap(func, in_axes=(0, 0, 0), out_axes=0)(x, timestep, y)
+    def __call__(self, x, timestep, y):
+
+        # func = lambda x, timestep, y: self.forward(x, timestep, y)
+        # return vmap(func, in_axes=(0, 0, 0), out_axes=0)(x, timestep, y)
+
+        print("!!! WARNING: Running without vmap for debugging. This will be slow. !!!")
+        # Manually loop over the batch dimension for debugging prints
+        batch_size = x.shape[0]
+        outputs = []
+        for i in range(batch_size):
+            print(f"--- Debugging Batch Item {i+1}/{batch_size} ---")
+            x_i = x[i]
+            # The timestep is a single value, but the forward pass might expect it to be shaped like a batch of 1
+            timestep_i = timestep[i]
+            y_i = y[i]
+            output_i = self.forward(x_i, timestep_i, y_i)
+            outputs.append(output_i)
+        return jnp.stack(outputs, axis=0)
 
 if __name__=="__main__":
   config = modelConfig(type='DiT-XL')
