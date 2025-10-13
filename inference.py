@@ -68,9 +68,21 @@ def main(args):
 
         # Predict noise and variance with CFG
         model_output = model(latents_input, t_batch, y_batch)
+        if t == args.steps - 1 or t == args.steps // 2 or t == 0:
+            print(f"    Raw model output:          mean={jnp.mean(model_output):.4f}, std={jnp.std(model_output):.4f}")
+        
+        # Split the output into conditional and unconditional predictions
         cond_output, uncond_output = jnp.split(model_output, 2, axis=0)
+        
+        # Combine them using the CFG formula
         cfg_output = uncond_output + args.cfg_scale * (cond_output - uncond_output)
+        if t == args.steps - 1 or t == args.steps // 2 or t == 0:
+            print(f"    CFG-guided output:         mean={jnp.mean(cfg_output):.4f}, std={jnp.std(cfg_output):.4f}")
+
+        # Split the combined output into predicted noise and variance
         predicted_noise, _ = jnp.split(cfg_output, 2, axis=1)
+        if t == args.steps - 1 or t == args.steps // 2 or t == 0:
+            print(f"    Predicted noise (epsilon): mean={jnp.mean(predicted_noise):.4f}, std={jnp.std(predicted_noise):.4f}")
         
         # Get diffusion schedule parameters
         alpha_t = diffusion.alphas[t]
