@@ -75,13 +75,16 @@ def main(args):
     # --- Decode and Save Image ---
     print("Decoding latents with VAE...")
     # The model was trained on latents scaled by 0.18215
-    latents = latents / 0.18215
+    # latents = latents / 0.18215
     import torch
     latents_torch = torch.from_numpy(np.array(latents)).to(vae.device) 
+    print(torch.mean(latents_torch))
+    latents_torch /= 0.18215
     image = vae.decode(latents_torch).sample
 
     # Convert to numpy and rescale to [0, 255]
     image = image.detach().cpu().numpy()
+    print(torch.mean(image))
     image = (image / 2 + 0.5).clip(0, 1)
     image = (image * 255).astype(np.uint8)
     image = np.transpose(image[0], (1, 2, 0))

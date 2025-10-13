@@ -133,7 +133,7 @@ class DiTFinalLayer(nnx.Module):
 
     def forward(self, x, conditioning):
         x = self.LayerNorm(x)
-        alpha, beta = self.linWeights(nnx.silu(conditioning)).reshape((2, -1))
+        beta, alpha  = self.linWeights(nnx.silu(conditioning)).reshape((2, -1))
         x = (1+alpha) * x + beta
         x = self.linear(x)
         return x
