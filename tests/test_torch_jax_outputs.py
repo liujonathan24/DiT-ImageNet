@@ -83,7 +83,7 @@ def main(args):
 
     # JAX inputs (from the same numpy arrays)
     jax_rng = jax.random.PRNGKey(seed)
-    jax_z = jnp.array(pt_z.cpu().numpy(), dtype=jnp.bfloat16)
+    jax_z = jnp.array(pt_z.cpu().to(torch.float32).numpy(), dtype=jnp.bfloat16)
     jax_t = jnp.array(pt_t.cpu().numpy())
     jax_y = jnp.array(pt_y.cpu().numpy())
     print("Inputs created.")
