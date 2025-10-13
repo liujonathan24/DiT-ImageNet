@@ -51,7 +51,7 @@ def main(args):
     
     # 1. Start with random noise
     rng, noise_rng = jax.random.split(rng)
-    latents = jax.random.normal(noise_rng, (n, model_config.image_channels, model_config.input_size, model_config.input_size))
+    latents = jax.random.normal(noise_rng, (n, model_config.image_channels, model_config.input_size, model_config.input_size), dtype=model_config.dtype)
     print(f"\n--- Initial Latents Stats ---")
     print(f"mean={jnp.mean(latents):.4f}, std={jnp.std(latents):.4f}, min={jnp.min(latents):.4f}, max={jnp.max(latents):.4f}")
 
@@ -71,15 +71,11 @@ def main(args):
         if t == args.steps - 1 or t == args.steps // 2 or t == 0:
             print(f"    Raw model output:          mean={jnp.mean(model_output):.4f}, std={jnp.std(model_output):.4f}")
         
-        # Split the output into conditional and unconditional predictions
         cond_output, uncond_output = jnp.split(model_output, 2, axis=0)
-        
-        # Combine them using the CFG formula
         cfg_output = uncond_output + args.cfg_scale * (cond_output - uncond_output)
         if t == args.steps - 1 or t == args.steps // 2 or t == 0:
             print(f"    CFG-guided output:         mean={jnp.mean(cfg_output):.4f}, std={jnp.std(cfg_output):.4f}")
 
-        # Split the combined output into predicted noise and variance
         predicted_noise, _ = jnp.split(cfg_output, 2, axis=1)
         if t == args.steps - 1 or t == args.steps // 2 or t == 0:
             print(f"    Predicted noise (epsilon): mean={jnp.mean(predicted_noise):.4f}, std={jnp.std(predicted_noise):.4f}")
@@ -96,7 +92,7 @@ def main(args):
         # Add noise back in
         if t > 0:
             rng, noise_rng = jax.random.split(rng)
-            z = jax.random.normal(noise_rng, latents.shape)
+            z = jax.random.normal(noise_rng, latents.shape, dtype=model_config.dtype)
             latents += jnp.sqrt(beta_t) * z
 
         if t == args.steps - 1 or t == args.steps // 2 or t == 0:
@@ -110,6 +106,8 @@ def main(args):
     latents = latents / 0.18215
     print(f"Scaled latents for VAE: mean={jnp.mean(latents):.4f}, std={jnp.std(latents):.4f}")
     
+    # Cast to float32 for PyTorch VAE
+    latents = latents.astype(jnp.float32)
     latents_torch = torch.from_numpy(np.array(latents)).to(vae.device)
     image = vae.decode(latents_torch).sample
     print(f"Decoded image (torch tensor): mean={image.mean():.4f}, std={image.std():.4f}, min={image.min():.4f}, max={image.max():.4f}")

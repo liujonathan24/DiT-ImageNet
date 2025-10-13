@@ -21,6 +21,7 @@ class modelConfig:
             self.MLP_hidden_size = self.DiT_hidden_size * 4 # TODO: consider adjusting this. 
             self.token_length = int((self.input_size/self.patch_size)**2)
             self.num_classes = 1000
+            self.dtype = jnp.bfloat16
         elif type == 'DiT-XL':
 
             self.model_type = 'DiT-XL'

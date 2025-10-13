@@ -12,11 +12,12 @@ class MHA(nnx.Module):
         self.length = config.token_length
         self.hidden = config.DiT_hidden_size
         self.num_heads = config.n_heads
+        self.dtype = config.dtype
         
         self.d_head = self.hidden // self.num_heads
         qkv_rng, out_rng = jax.random.split(rng)
-        self.qkv_proj = nnx.Linear(self.hidden, 3 * self.hidden, kernel_init=xavier_init, rngs=nnx.Rngs(qkv_rng))
-        self.out_proj = nnx.Linear(self.hidden, self.hidden, kernel_init=xavier_init, rngs=nnx.Rngs(out_rng))
+        self.qkv_proj = nnx.Linear(self.hidden, 3 * self.hidden, kernel_init=xavier_init, rngs=nnx.Rngs(qkv_rng), dtype=self.dtype)
+        self.out_proj = nnx.Linear(self.hidden, self.hidden, kernel_init=xavier_init, rngs=nnx.Rngs(out_rng), dtype=self.dtype)
 
     def __call__(self, x):
         return self.forward(x)
@@ -54,9 +55,10 @@ class MLP(nnx.Module):
         sufficient for the task. Uses GeLU activations.
         """
         fc1_rng, fc2_rng = jax.random.split(rng)
-        self.fc1 = nnx.Linear(config.DiT_hidden_size, config.MLP_hidden_size, kernel_init=xavier_init, rngs=nnx.Rngs(fc1_rng))
+        self.dtype = config.dtype
+        self.fc1 = nnx.Linear(config.DiT_hidden_size, config.MLP_hidden_size, kernel_init=xavier_init, rngs=nnx.Rngs(fc1_rng), dtype=self.dtype)
         self.act = lambda t: nnx.gelu(t, approximate=True)
-        self.fc2 = nnx.Linear(config.MLP_hidden_size, config.DiT_hidden_size, kernel_init=xavier_init, rngs=nnx.Rngs(fc2_rng))
+        self.fc2 = nnx.Linear(config.MLP_hidden_size, config.DiT_hidden_size, kernel_init=xavier_init, rngs=nnx.Rngs(fc2_rng), dtype=self.dtype)
     
     def __call__(self, x):
         return self.forward(x)
@@ -70,9 +72,10 @@ class MLP(nnx.Module):
 class TimeMLP(nnx.Module):
     def __init__(self, config: modelConfig, rng: jax.random.PRNGKey):
         fc1_rng, fc2_rng = jax.random.split(rng)
-        self.fc1 = nnx.Linear(config.time_embed_dim, config.DiT_hidden_size, kernel_init=xavier_init, rngs=nnx.Rngs(fc1_rng))
+        self.dtype = config.dtype
+        self.fc1 = nnx.Linear(config.time_embed_dim, config.DiT_hidden_size, kernel_init=xavier_init, rngs=nnx.Rngs(fc1_rng), dtype=self.dtype)
         self.act = nnx.silu
-        self.fc2 = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size, kernel_init=xavier_init, rngs=nnx.Rngs(fc2_rng))
+        self.fc2 = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size, kernel_init=xavier_init, rngs=nnx.Rngs(fc2_rng), dtype=self.dtype)
 
     def forward(self, x):
         x = self.fc1(x)
@@ -84,7 +87,7 @@ class TimeMLP(nnx.Module):
         return self.forward(x)
 
 def zero_init(key, shape, dtype):
-    value = jnp.zeros(shape)
+    value = jnp.zeros(shape, dtype=dtype)
     return value
 
 class DiTBlock(nnx.Module):
@@ -92,15 +95,15 @@ class DiTBlock(nnx.Module):
         """
         Initialize a DiT block.
         """
-        
+        self.dtype = config.dtype
         ln1_rng, ln2_rng, mha_rng, mlp_rng, cLin_rng = jax.random.split(rng, 5)
-        self.LayerNorm1 = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(ln1_rng), use_scale=False, use_bias=False)
-        self.LayerNorm2 = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(ln2_rng), use_scale=False, use_bias=False)
+        self.LayerNorm1 = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(ln1_rng), use_scale=False, use_bias=False, dtype=self.dtype)
+        self.LayerNorm2 = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(ln2_rng), use_scale=False, use_bias=False, dtype=self.dtype)
         self.MHA = MHA(config, mha_rng)
         self.MLP = MLP(config, mlp_rng) 
 
         # MLP for conditioning info
-        self.cLinWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size * 6, rngs=nnx.Rngs(cLin_rng), kernel_init=zero_init)  
+        self.cLinWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size * 6, rngs=nnx.Rngs(cLin_rng), kernel_init=zero_init, dtype=self.dtype)  
     
     def __call__(self, x, conditioning):
         """Uses vmap to process batched inputs."""
@@ -126,10 +129,11 @@ class DiTBlock(nnx.Module):
 
 class DiTFinalLayer(nnx.Module):
     def __init__(self, config: modelConfig, rng: jax.random.PRNGKey):
+        self.dtype = config.dtype
         ln_rng, linear_rng, lin_weights_rng = jax.random.split(rng, 3)
-        self.LayerNorm = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(ln_rng), use_scale=False, use_bias=False)
-        self.linear = nnx.Linear(config.DiT_hidden_size, config.patch_size**2 * config.output_channels, kernel_init=xavier_init, rngs=nnx.Rngs(linear_rng))
-        self.linWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size*2, rngs=nnx.Rngs(lin_weights_rng), kernel_init=zero_init)
+        self.LayerNorm = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(ln_rng), use_scale=False, use_bias=False, dtype=self.dtype)
+        self.linear = nnx.Linear(config.DiT_hidden_size, config.patch_size**2 * config.output_channels, kernel_init=xavier_init, rngs=nnx.Rngs(linear_rng), dtype=self.dtype)
+        self.linWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size*2, rngs=nnx.Rngs(lin_weights_rng), kernel_init=zero_init, dtype=self.dtype)
 
     def forward(self, x, conditioning):
         x = self.LayerNorm(x)
@@ -148,6 +152,7 @@ class DiTPatch(nnx.Module):
         self.output_channels = config.output_channels
         self.token_length = config.token_length
         self.DiT_hidden_size = config.DiT_hidden_size
+        self.dtype = config.dtype
         
         self.patch_embeddings = nnx.Conv(
             in_features=config.image_channels,         
@@ -156,6 +161,7 @@ class DiTPatch(nnx.Module):
             strides=(config.patch_size, config.patch_size),
             padding='VALID',                           
             rngs=nnx.Rngs(rng),
+            dtype=self.dtype
         )
 
     def convert_to_patches(self, input):
@@ -177,11 +183,12 @@ class DiffusionTransformer(nnx.Module):
         self.length = config.token_length 
         self.DiT_hidden_size = config.DiT_hidden_size
         self.n_layers = config.n_layers
+        self.dtype = config.dtype
 
         rng, layer_rng, final_rng, mapper_rng, time_mlp_rng, y_embed_rng = jax.random.split(config.rngs.params(), 6)
         layer_rngs = jax.random.split(layer_rng, self.n_layers)
 
-        self.y_embedder = nnx.Embed(num_embeddings=config.num_classes, features=config.DiT_hidden_size, rngs=nnx.Rngs(y_embed_rng))
+        self.y_embedder = nnx.Embed(num_embeddings=config.num_classes, features=config.DiT_hidden_size, rngs=nnx.Rngs(y_embed_rng), dtype=self.dtype)
 
         self.layers = nnx.List([
                  DiTBlock(config, layer_rngs[i]) for i in range(self.n_layers)
@@ -195,9 +202,9 @@ class DiffusionTransformer(nnx.Module):
     def pos_embed(self):
         position = jnp.arange(self.length)[:, jnp.newaxis]
         div_term = jnp.exp(jnp.arange(0, self.DiT_hidden_size, 2) * -(jnp.log(10000.0) / self.DiT_hidden_size))
-        pe = jnp.zeros((self.length, self.DiT_hidden_size))
-        pe.at[:, 0::2].set(jnp.sin(position * div_term))
-        pe.at[:, 1::2].set(jnp.cos(position * div_term))
+        pe = jnp.zeros((self.length, self.DiT_hidden_size), dtype=self.dtype)
+        pe.at[:, 0::2].set(jnp.sin(position * div_term).astype(self.dtype))
+        pe.at[:, 1::2].set(jnp.cos(position * div_term).astype(self.dtype))
         return pe
 
     def time_embed(self, t, max_period=10000):
@@ -213,7 +220,7 @@ class DiffusionTransformer(nnx.Module):
         embedding = jnp.concatenate([jnp.cos(args), jnp.sin(args)], axis=-1)
         if dim % 2:
             embedding = jnp.concatenate([embedding, jnp.zeros(1)], axis=-1)
-        return embedding
+        return embedding.astype(self.dtype)
 
     def forward(self, x, timestep, y):
         """
@@ -249,7 +256,7 @@ if __name__=="__main__":
   rng = jax.random.PRNGKey(0)
 
   batch = 8
-  test_input = jnp.ones((batch, 4, 32, 32))
+  test_input = jnp.ones((batch, 4, 32, 32), dtype=config.dtype)
   test_timesteps = jnp.ones(batch)
   test_labels = jnp.ones(batch, dtype=jnp.int32)
   
