@@ -19,8 +19,33 @@ def create_dit_xl_config():
 def convert_weights(pytorch_weights_path, jax_model):
     """Converts and loads PyTorch weights into the JAX model."""
     
-    # Load PyTorch weights
+    # Load PyTorch weights and print all keys
     pt_weights = torch.load(pytorch_weights_path, map_location="cpu")
+    print("--- All PyTorch Keys ---")
+    for key in sorted(pt_weights.keys()):
+        print(key)
+    print("------------------------")
+
+    # Get JAX model state and print all keys
+    jax_state = nnx.state(jax_model)
+    flat_state_with_paths, treedef = jax.tree_util.tree_flatten_with_path(jax_state)
+    print("\n--- All JAX Keys ---")
+    jax_keys = []
+    for key_path, value in flat_state_with_paths:
+        path_parts = []
+        for k in key_path:
+            if hasattr(k, 'idx'):
+                path_parts.append(str(k.idx))
+            elif hasattr(k, 'key'):
+                path_parts.append(str(k.key))
+            else:
+                path_parts.append(str(k))
+        path_str = ".".join(path_parts)
+        if path_str.startswith('.'): path_str = path_str[1:]
+        jax_keys.append(path_str)
+    for key in sorted(jax_keys):
+        print(key)
+    print("--------------------")
 
     # Get the JAX model's state
     jax_state = nnx.state(jax_model)
@@ -31,7 +56,7 @@ def convert_weights(pytorch_weights_path, jax_model):
     # --- Weight Mapping ---
     weight_mapping = {
         # Class Embedder
-        "y_embedder.embedding": ("y_embedder.weight", False),
+        "y_embedder.embedding": ("y_embedder.embedding_table.weight", False),
 
         # Patch Embedder
         "mapper.patch_embeddings.kernel..value": ("x_embedder.proj.weight", True),
