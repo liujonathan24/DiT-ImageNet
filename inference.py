@@ -41,21 +41,22 @@ def main(args):
     
     # 1. Start with random noise
     rng, noise_rng = jax.random.split(rng)
-    latents = jax.random.normal(noise_rng, (1, model_config.image_channels, model_config.output_dim, model_config.output_dim))
+    latents = jax.random.normal(noise_rng, (1, model_config.image_channels, model_config.input_size, model_config.input_size))
 
     # 2. Denoising loop
     for t in tqdm(reversed(range(args.steps)), total=args.steps):
         t_batch = jnp.array([t])
         
-        # Predict noise
-        predicted_noise = model(latents, t_batch)
+        # Predict noise and variance
+        model_output = model(latents, t_batch)
+        predicted_noise, predicted_variance = jnp.split(model_output, 2, axis=1)
         
         # Get diffusion schedule parameters for the current timestep
         alpha_t = diffusion.alphas[t]
         alpha_bar_t = diffusion.alpha_bars[t]
         beta_t = diffusion.betas[t]
 
-        # Denoise one step
+        # Denoise one step using only the predicted noise (epsilon)
         # Formula from DDPM paper (https://arxiv.org/abs/2006.11239), Eq. 11
         coeff = (1 - alpha_t) / jnp.sqrt(1 - alpha_bar_t)
         latents = (1 / jnp.sqrt(alpha_t)) * (latents - coeff * predicted_noise)

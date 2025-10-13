@@ -13,11 +13,7 @@ from helpers.checkpoint import save_checkpoint
 
 def create_dit_xl_config():
     """Creates a modelConfig for DiT-XL."""
-    config = modelConfig()
-    config.n_layers = 28
-    config.n_heads = 16
-    config.DiT_hidden_size = 1152
-    config.patch_size = 2
+    config = modelConfig(type='DiT-XL')
     return config
 
 def convert_weights(pytorch_weights_path, jax_model):
@@ -36,8 +32,8 @@ def convert_weights(pytorch_weights_path, jax_model):
     # Updated with the correct '..value' suffix
     weight_mapping = {
         # Patch Embedder
-        "mapper.patch_embeddings.kernel..value": ("x_embedder.proj.weight", True),
-        "mapper.patch_embeddings.bias..value": ("x_embedder.proj.bias", False),
+        "mapper.proj.kernel..value": ("x_embedder.proj.weight", True),
+        "mapper.proj.bias..value": ("x_embedder.proj.bias", False),
 
         # Positional Embedding
         "pos_embed": ("pos_embed", False),

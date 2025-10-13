@@ -25,22 +25,22 @@ class modelConfig:
             self.model_type = 'DiT-XL'
             self.rngs = nnx.Rngs(params=42)
 
-            # Patch details
+            # Config for 256x256 latent-space model
             self.input_size = 32
             self.image_channels = 4
             self.patch_size = 2
 
             # output details
-            self.output_dim = int(self.input_size/self.patch_size)
-            self.output_channels = 8
+            self.output_dim = int(self.input_size / self.patch_size)  # 16
+            self.output_channels = 8  # 4 for epsilon, 4 for variance
 
             # Architecture details
             self.n_layers = 28
             self.n_heads = 16
             self.DiT_hidden_size = 1152
             self.time_embed_dim = 256
-            self.MLP_hidden_size = self.DiT_hidden_size * 4 # TODO: consider adjusting this. 
-            self.token_length = int((self.input_size/self.patch_size)**2)
+            self.MLP_hidden_size = self.DiT_hidden_size * 4
+            self.token_length = int((self.input_size / self.patch_size)**2)  # 16*16=256
 
 
     def to_dict(self):

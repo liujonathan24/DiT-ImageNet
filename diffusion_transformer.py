@@ -126,10 +126,9 @@ class DiTBlock(nnx.Module):
 
 class DiTFinalLayer(nnx.Module):
     def __init__(self, config: modelConfig, rng: jax.random.PRNGKey):
-        
         ln_rng, linear_rng, lin_weights_rng = jax.random.split(rng, 3)
         self.LayerNorm = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(ln_rng), use_scale=False, use_bias=False)
-        self.linear = nnx.Linear(config.DiT_hidden_size, config.patch_size**2*config.output_channels, kernel_init=xavier_init, rngs=nnx.Rngs(linear_rng)) 
+        self.linear = nnx.Linear(config.DiT_hidden_size, config.patch_size**2 * config.output_channels, kernel_init=xavier_init, rngs=nnx.Rngs(linear_rng))
         self.linWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size*2, rngs=nnx.Rngs(lin_weights_rng), kernel_init=zero_init)
 
     def forward(self, x, conditioning):
@@ -150,27 +149,25 @@ class DiTPatch(nnx.Module):
         self.token_length = config.token_length
         self.DiT_hidden_size = config.DiT_hidden_size
         
-        # For latent-space DiT, this should be a linear projection.
-        self.proj = nnx.Linear(config.image_channels, config.DiT_hidden_size, kernel_init=xavier_init, rngs=nnx.Rngs(rng))
+        self.patch_embeddings = nnx.Conv(
+            in_features=config.image_channels,         
+            out_features=config.DiT_hidden_size,      
+            kernel_size=(config.patch_size, config.patch_size),
+            strides=(config.patch_size, config.patch_size),
+            padding='VALID',                           
+            rngs=nnx.Rngs(rng),
+        )
 
     def convert_to_patches(self, input):
-        # Reshapes the output of the final transformer layer back to an image-like latent.
         x = input.reshape((self.output_dim, self.output_dim, self.patch_size, self.patch_size, self.output_channels))
         x = jnp.einsum('hwpqc->chpwq', x)
         imgs = x.reshape((self.output_channels, self.output_dim*self.patch_size, self.output_dim*self.patch_size))
         return imgs
     
     def convert_to_stream(self, input):
-        # input shape: (C, H, W) e.g. (4, 16, 16)
-        C, H, W = input.shape
-        assert H * W == self.token_length, f"Input height*width {H*W} does not match token_length {self.token_length}"
-        
-        # Reshape to (num_tokens, channels)
-        input = input.reshape(C, H * W)
-        input = jnp.transpose(input) # (H*W, C) = (token_length, image_channels)
-        
-        # Project to DiT hidden size
-        input = self.proj(input) # (token_length, DiT_hidden_size)
+        input = jnp.einsum('chw->hwc', input)
+        input = self.patch_embeddings(input)
+        input = input.reshape(self.token_length, self.DiT_hidden_size)
         return input
 
 class DiffusionTransformer(nnx.Module):
@@ -243,35 +240,13 @@ class DiffusionTransformer(nnx.Module):
 
 if __name__=="__main__":
   # Testing
-  config = modelConfig()
+  config = modelConfig(type='DiT-XL')
   rng = jax.random.PRNGKey(0)
 
-  batched = True
-  if not batched:
-    test_input = jnp.ones((config.token_length, config.DiT_hidden_size))
-    test_condit = jnp.ones((config.DiT_hidden_size))
-
-    mha_rng, mlp_rng, dit_block_rng = jax.random.split(rng, 3)
-    test_MHA = MHA(config, mha_rng)
-    x, attn = test_MHA(test_input)
-    print(test_input.shape, x.shape)
-
-
-    test_MLP = MLP(config, mlp_rng)
-    x = test_MLP(test_input)
-    print(test_input.shape, x.shape)
-
-    test_DiTBlock = DiTBlock(config, dit_block_rng)
-    x = test_DiTBlock(test_input, test_condit)
-    print(test_input.shape, x.shape)
-
-  else:
-    batch = 8
-    test_input = jnp.ones((batch, config.token_length, config.DiT_hidden_size))
-    test_condit = jnp.ones((batch, config.DiT_hidden_size))
-    test_timesteps = jnp.ones(batch)
-    
-    test_input = jnp.ones((batch, 4, 32, 32))
-    test_DiT = DiffusionTransformer(config)
-    x = test_DiT(test_input, test_timesteps)
-    print(x.shape)
+  batch = 8
+  test_input = jnp.ones((batch, 4, 32, 32))
+  test_timesteps = jnp.ones(batch)
+  
+  test_DiT = DiffusionTransformer(config)
+  x = test_DiT(test_input, test_timesteps)
+  print(x.shape)
