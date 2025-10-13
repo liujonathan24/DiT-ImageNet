@@ -107,7 +107,7 @@ class DiTBlock(nnx.Module):
         return self.forward(x, conditioning)
 
     def forward(self, x, conditioning):
-        alpha1, beta1, gamma1, alpha2, beta2, gamma2 = self.cLinWeights(nnx.silu(conditioning)).reshape((6, -1))
+        beta1, alpha1, gamma1, beta2, alpha2, gamma2 = self.cLinWeights(nnx.silu(conditioning)).reshape((6, -1))
 
         tmp = self.LayerNorm1(x)
         tmp = (alpha1+1)*tmp + beta1
