@@ -133,7 +133,7 @@ class DiTFinalLayer(nnx.Module):
 
     def forward(self, x, conditioning):
         x = self.LayerNorm(x)
-        beta, alpha  = self.linWeights(nnx.silu(conditioning)).reshape((2, -1))
+        beta, alpha = self.linWeights(nnx.silu(conditioning)).reshape((2, -1))
         x = (1+alpha) * x + beta
         x = self.linear(x)
         return x
@@ -178,8 +178,10 @@ class DiffusionTransformer(nnx.Module):
         self.DiT_hidden_size = config.DiT_hidden_size
         self.n_layers = config.n_layers
 
-        rng, layer_rng, final_rng, mapper_rng, time_mlp_rng = jax.random.split(config.rngs.params(), 5)
+        rng, layer_rng, final_rng, mapper_rng, time_mlp_rng, y_embed_rng = jax.random.split(config.rngs.params(), 6)
         layer_rngs = jax.random.split(layer_rng, self.n_layers)
+
+        self.y_embedder = nnx.Embed(num_embeddings=config.num_classes, features=config.DiT_hidden_size, rngs=nnx.Rngs(y_embed_rng))
 
         self.layers = nnx.List([
                  DiTBlock(config, layer_rngs[i]) for i in range(self.n_layers)
@@ -213,13 +215,16 @@ class DiffusionTransformer(nnx.Module):
             embedding = jnp.concatenate([embedding, jnp.zeros(1)], axis=-1)
         return embedding
 
-    def forward(self, x, timestep):
+    def forward(self, x, timestep, y):
         """
         Forward pass of DiT.
         """
         x = self.mapper.convert_to_stream(x)
         x = x + self.pos_embed
-        conditioning = self.time_MLP(self.time_embed(timestep))
+        
+        time_embedding = self.time_MLP(self.time_embed(timestep))
+        class_embedding = self.y_embedder(y)
+        conditioning = time_embedding + class_embedding
 
         for layer in range(self.n_layers):
             x = self.layers[layer].forward(x, conditioning)
@@ -233,10 +238,10 @@ class DiffusionTransformer(nnx.Module):
     def set_weights(self, weights):
         nnx.update(self, weights)
 
-    def __call__(self, x, conditioning): 
+    def __call__(self, x, timestep, y): 
         """Uses vmap to process batched inputs."""
-        func = lambda x, conditioning: self.forward(x, conditioning)
-        return vmap(func, in_axes=(0, 0), out_axes=0)(x, conditioning)
+        func = lambda x, timestep, y: self.forward(x, timestep, y)
+        return vmap(func, in_axes=(0, 0, 0), out_axes=0)(x, timestep, y)
 
 if __name__=="__main__":
   # Testing
@@ -246,7 +251,8 @@ if __name__=="__main__":
   batch = 8
   test_input = jnp.ones((batch, 4, 32, 32))
   test_timesteps = jnp.ones(batch)
+  test_labels = jnp.ones(batch, dtype=jnp.int32)
   
   test_DiT = DiffusionTransformer(config)
-  x = test_DiT(test_input, test_timesteps)
+  x = test_DiT(test_input, test_timesteps, test_labels)
   print(x.shape)

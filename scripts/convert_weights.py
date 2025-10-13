@@ -29,11 +29,13 @@ def convert_weights(pytorch_weights_path, jax_model):
     flat_state_with_paths, treedef = jax.tree_util.tree_flatten_with_path(jax_state)
 
     # --- Weight Mapping ---
-    # Updated with the correct '..value' suffix
     weight_mapping = {
+        # Class Embedder
+        "y_embedder.embedding": ("y_embedder.weight", False),
+
         # Patch Embedder
-        "mapper.proj.kernel..value": ("x_embedder.proj.weight", True),
-        "mapper.proj.bias..value": ("x_embedder.proj.bias", False),
+        "mapper.patch_embeddings.kernel..value": ("x_embedder.proj.weight", True),
+        "mapper.patch_embeddings.bias..value": ("x_embedder.proj.bias", False),
 
         # Positional Embedding
         "pos_embed": ("pos_embed", False),
@@ -66,11 +68,8 @@ def convert_weights(pytorch_weights_path, jax_model):
         weight_mapping[f"layers.{i}.MLP.fc2.bias..value"] = (f"blocks.{i}.mlp.fc2.bias", False)
 
         # Conditioning Parameters (adaLN)
-        # This is a guess, you may need to verify the PyTorch model structure
         weight_mapping[f"layers.{i}.cLinWeights.kernel..value"] = (f"blocks.{i}.adaLN_modulation.1.weight", True)
         weight_mapping[f"layers.{i}.cLinWeights.bias..value"] = (f"blocks.{i}.adaLN_modulation.1.bias", False)
-        # NOTE: cScaleWeights might not have a direct mapping and could be part of the adaLN_modulation weights.
-        # This requires inspecting the PyTorch model's adaLN_modulation layer.
 
     # --- Conversion Loop ---
     new_flat_state = []
@@ -102,7 +101,6 @@ def convert_weights(pytorch_weights_path, jax_model):
 
             # Special case for pos_embed shape
             if pt_name == 'pos_embed' and value.ndim == 3:
-                # print("Squeezing extra dimension from pos_embed.")
                 value = np.squeeze(value, axis=0)
 
             # Transpose if necessary
@@ -110,8 +108,6 @@ def convert_weights(pytorch_weights_path, jax_model):
                 if value.ndim == 2: # For Linear layers
                     value = value.T
                 elif value.ndim == 4 and hasattr(jax_value, 'ndim') and jax_value.ndim == 4: # For Conv layers
-                    # PyTorch: (out_channels, in_channels, kernel_height, kernel_width)
-                    # JAX/Flax: (kernel_height, kernel_width, in_channels, out_channels)
                     value = np.transpose(value, (2, 3, 1, 0))
 
             # Check shapes
@@ -151,12 +147,9 @@ def main(args):
     if args.output_dir:
         print(f"\nSaving converted JAX model to: {args.output_dir}")
         os.makedirs(args.output_dir, exist_ok=True)
-        # We need a dummy optimizer and other objects for the save function
         import orbax.checkpoint as ocp
         from helpers.config import trainConfig
         mngr = ocp.CheckpointManager(args.output_dir, options=ocp.CheckpointManagerOptions(max_to_keep=1))
-        # The save_checkpoint function expects an optimizer, epoch, etc.
-        # We can pass dummy values for this conversion script.
         class DummyArgs:
             pass
         dummy_args = DummyArgs()
