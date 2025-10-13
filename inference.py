@@ -13,6 +13,18 @@ from helpers.checkpoint import restore_checkpoint
 from helpers.diffusion import Diffusion
 from vae.import_sd_vae_torch import get_sd_vae
 
+def print_stats(tensor, name="Tensor"):
+    # Handles both JAX and PyTorch tensors
+    if hasattr(tensor, 'mean'): # PyTorch tensor
+        mean, std, min_val, max_val = tensor.mean().item(), tensor.std().item(), tensor.min().item(), tensor.max().item()
+    else: # JAX array
+        mean, std, min_val, max_val = float(jnp.mean(tensor)), float(jnp.std(tensor)), float(jnp.min(tensor)), float(jnp.max(tensor))
+    print(
+        f"{name} stats: "
+        f"mean={mean:.4f}, std={std:.4f}, "
+        f"min={min_val:.4f}, max={max_val:.4f}, shape={tensor.shape}, dtype={tensor.dtype}"
+    )
+
 
 def main(args):
     # --- Device Setup ---
@@ -47,13 +59,13 @@ def main(args):
     y_batch = jnp.concatenate([y, y_null], axis=0)
 
     # --- Inference Loop --- 
-    print(f"Starting diffusion sampling with CFG (scale={args.cfg_scale})...")
+    print(f"\nStarting diffusion sampling with CFG (scale={args.cfg_scale})...")
     
     # 1. Start with random noise
     rng, noise_rng = jax.random.split(rng)
     latents = jax.random.normal(noise_rng, (n, model_config.image_channels, model_config.input_size, model_config.input_size), dtype=model_config.dtype)
-    print(f"\n--- Initial Latents Stats ---")
-    print(f"mean={jnp.mean(latents):.4f}, std={jnp.std(latents):.4f}, min={jnp.min(latents):.4f}, max={jnp.max(latents):.4f}")
+    print("\n--- Initial Latents Stats ---")
+    print_stats(latents, name="Initial latents")
 
     # 2. Denoising loop
     for t in tqdm(reversed(range(args.steps)), total=args.steps):
@@ -64,21 +76,21 @@ def main(args):
         # Print stats at key intervals
         if t == args.steps - 1 or t == args.steps // 2 or t == 0:
             print(f"\n--- Stats at step {t} ---")
-            print(f"  Latents (start of step): mean={jnp.mean(latents):.4f}, std={jnp.std(latents):.4f}")
+            print_stats(latents, name="  Latents (start of step)")
 
         # Predict noise and variance with CFG
         model_output = model(latents_input, t_batch, y_batch)
         if t == args.steps - 1 or t == args.steps // 2 or t == 0:
-            print(f"    Raw model output:          mean={jnp.mean(model_output):.4f}, std={jnp.std(model_output):.4f}")
+            print_stats(model_output, name="    Raw model output")
         
         cond_output, uncond_output = jnp.split(model_output, 2, axis=0)
         cfg_output = uncond_output + args.cfg_scale * (cond_output - uncond_output)
         if t == args.steps - 1 or t == args.steps // 2 or t == 0:
-            print(f"    CFG-guided output:         mean={jnp.mean(cfg_output):.4f}, std={jnp.std(cfg_output):.4f}")
+            print_stats(cfg_output, name="    CFG-guided output")
 
         predicted_noise, _ = jnp.split(cfg_output, 2, axis=1)
         if t == args.steps - 1 or t == args.steps // 2 or t == 0:
-            print(f"    Predicted noise (epsilon): mean={jnp.mean(predicted_noise):.4f}, std={jnp.std(predicted_noise):.4f}")
+            print_stats(predicted_noise, name="    Predicted noise (epsilon)")
         
         # Get diffusion schedule parameters
         alpha_t = diffusion.alphas[t]
@@ -96,29 +108,29 @@ def main(args):
             latents += jnp.sqrt(beta_t) * z
 
         if t == args.steps - 1 or t == args.steps // 2 or t == 0:
-            print(f"  Latents (end of step):   mean={jnp.mean(latents):.4f}, std={jnp.std(latents):.4f}")
+            print_stats(latents, name="  Latents (end of step)")
 
     print("\n--- Stats after diffusion loop ---")
-    print(f"Final latents: mean={jnp.mean(latents):.4f}, std={jnp.std(latents):.4f}, min={jnp.min(latents):.4f}, max={jnp.max(latents):.4f}")
+    print_stats(latents, name="Final latents")
 
     # --- Decode and Save Image ---
     print("\n--- Decoding latents with VAE ---")
-    latents = latents / 0.18215
-    print(f"Scaled latents for VAE: mean={jnp.mean(latents):.4f}, std={jnp.std(latents):.4f}")
+    latents_for_vae = latents / 0.18215
+    print_stats(latents_for_vae, name="Scaled latents for VAE")
     
     # Cast to float32 for PyTorch VAE
-    latents = latents.astype(jnp.float32)
-    latents_torch = torch.from_numpy(np.array(latents)).to(vae.device)
+    latents_for_vae = latents_for_vae.astype(jnp.float32)
+    latents_torch = torch.from_numpy(np.array(latents_for_vae)).to(vae.device)
     image = vae.decode(latents_torch).sample
-    print(f"Decoded image (torch tensor): mean={image.mean():.4f}, std={image.std():.4f}, min={image.min():.4f}, max={image.max():.4f}")
+    print_stats(image, name="Decoded image (torch tensor)")
 
     # Convert to numpy and rescale to [0, 255]
     image = image.detach().cpu().numpy()
     image = (image / 2 + 0.5).clip(0, 1)
-    print(f"Rescaled image to [0, 1]: mean={image.mean():.4f}, std={image.std():.4f}")
+    print_stats(image, name="Rescaled image to [0, 1]")
     
     image = (image * 255).astype(np.uint8)
-    print(f"Final image for PIL [0, 255]: mean={image.mean():.4f}, std={image.std():.4f}")
+    print_stats(image, name="Final image for PIL [0, 255]")
     
     # Save the images
     for i in range(n):
