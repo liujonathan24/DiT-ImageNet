@@ -179,7 +179,7 @@ class DiffusionTransformer(nnx.Module):
         rng, layer_rng, final_rng, mapper_rng, time_mlp_rng, y_embed_rng = jax.random.split(config.rngs.params(), 6)
         layer_rngs = jax.random.split(layer_rng, self.n_layers)
 
-        self.y_embedder = nnx.Embed(num_embeddings=config.num_classes, features=config.DiT_hidden_size, rngs=nnx.Rngs(y_embed_rng), dtype=self.dtype)
+        self.y_embedder = nnx.Embed(num_embeddings=config.num_classes + 1, features=config.DiT_hidden_size, rngs=nnx.Rngs(y_embed_rng), dtype=self.dtype)
 
         self.layers = nnx.List([
                  DiTBlock(config, layer_rngs[i]) for i in range(self.n_layers)

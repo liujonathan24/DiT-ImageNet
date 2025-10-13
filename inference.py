@@ -1,30 +1,15 @@
 import jax 
 import jax.numpy as jnp
-from flax import nnx
 import numpy as np
 import argparse
 import os
 from PIL import Image
-from tqdm import tqdm
 import torch
 
 from helpers.config import modelConfig, trainConfig
 from helpers.checkpoint import restore_checkpoint
-from helpers.diffusion import Diffusion
+from helpers.create_diffusion import create_diffusion
 from vae.import_sd_vae_torch import get_sd_vae
-
-def print_stats(tensor, name="Tensor"):
-    # Handles both JAX and PyTorch tensors
-    if hasattr(tensor, 'mean'): # PyTorch tensor
-        mean, std, min_val, max_val = tensor.mean().item(), tensor.std().item(), tensor.min().item(), tensor.max().item()
-    else: # JAX array
-        mean, std, min_val, max_val = float(jnp.mean(tensor)), float(jnp.std(tensor)), float(jnp.min(tensor)), float(jnp.max(tensor))
-    print(
-        f"{name} stats: "
-        f"mean={mean:.4f}, std={std:.4f}, "
-        f"min={min_val:.4f}, max={max_val:.4f}, shape={tensor.shape}, dtype={tensor.dtype}"
-    )
-
 
 def main(args):
     # --- Device Setup ---
@@ -36,10 +21,9 @@ def main(args):
     # --- Load Models and Configs ---
     print("Loading models and configurations...")
     model_config = modelConfig(type='DiT-XL')
-    train_config = trainConfig() # Needed for diffusion schedule
-
+    
     # Restore the JAX model from the converted checkpoint
-    model, _ = restore_checkpoint(args.checkpoint_path, model_config, train_config, gpu_device)
+    model, _ = restore_checkpoint(args.checkpoint_path, model_config, trainConfig(), gpu_device)
     print(f"Model restored from {args.checkpoint_path}")
 
     # Load the VAE
@@ -48,89 +32,39 @@ def main(args):
     vae.eval()
 
     # --- Diffusion Setup ---
-    diffusion = Diffusion(train_config.linear_variance_min, train_config.linear_variance_max, train_config.tmax)
+    diffusion = create_diffusion(args.steps)
     rng = jax.random.PRNGKey(args.seed)
 
-    # --- Classifier-Free Guidance Setup ---
+    # --- Prepare Class Labels ---
     class_labels = [int(label) for label in args.class_labels.split(',')]
     n = len(class_labels)
     y = jnp.array(class_labels)
-    y_null = jnp.array([model_config.num_classes] * n)
-    y_batch = jnp.concatenate([y, y_null], axis=0)
 
-    # --- Inference Loop --- 
+    # --- Inference ---
     print(f"\nStarting diffusion sampling with CFG (scale={args.cfg_scale})...")
     
-    # 1. Start with random noise
+    # Create initial noise
+    shape = (n, model_config.image_channels, model_config.input_size, model_config.input_size)
     rng, noise_rng = jax.random.split(rng)
-    latents = jax.random.normal(noise_rng, (n, model_config.image_channels, model_config.input_size, model_config.input_size), dtype=model_config.dtype)
-    print("\n--- Initial Latents Stats ---")
-    print_stats(latents, name="Initial latents")
+    
+    # Run the sampling loop
+    latents = diffusion.p_sample_loop(model, shape, y, args.cfg_scale, noise_rng, progress=True)
 
-    # 2. Denoising loop
-    for t in tqdm(reversed(range(args.steps)), total=args.steps):
-        # Create the input for the model by duplicating the latents for CFG
-        latents_input = jnp.concatenate([latents, latents], axis=0)
-        t_batch = jnp.array([t] * (n * 2))
-        
-        # Print stats at key intervals
-        if t == args.steps - 1 or t == args.steps // 2 or t == 0:
-            print(f"\n--- Stats at step {t} ---")
-            print_stats(latents, name="  Latents (start of step)")
-
-        # Predict noise and variance with CFG
-        model_output = model(latents_input, t_batch, y_batch)
-        if t == args.steps - 1 or t == args.steps // 2 or t == 0:
-            print_stats(model_output, name="    Raw model output")
-        
-        cond_output, uncond_output = jnp.split(model_output, 2, axis=0)
-        cfg_output = uncond_output + args.cfg_scale * (cond_output - uncond_output)
-        if t == args.steps - 1 or t == args.steps // 2 or t == 0:
-            print_stats(cfg_output, name="    CFG-guided output")
-
-        predicted_noise, _ = jnp.split(cfg_output, 2, axis=1)
-        if t == args.steps - 1 or t == args.steps // 2 or t == 0:
-            print_stats(predicted_noise, name="    Predicted noise (epsilon)")
-        
-        # Get diffusion schedule parameters
-        alpha_t = diffusion.alphas[t]
-        alpha_bar_t = diffusion.alpha_bars[t]
-        beta_t = diffusion.betas[t]
-
-        # Denoise one step
-        coeff = (1 - alpha_t) / jnp.sqrt(1 - alpha_bar_t)
-        latents = (1 / jnp.sqrt(alpha_t)) * (latents - coeff * predicted_noise)
-
-        # Add noise back in
-        if t > 0:
-            rng, noise_rng = jax.random.split(rng)
-            z = jax.random.normal(noise_rng, latents.shape, dtype=model_config.dtype)
-            latents += jnp.sqrt(beta_t) * z
-
-        if t == args.steps - 1 or t == args.steps // 2 or t == 0:
-            print_stats(latents, name="  Latents (end of step)")
-
-    print("\n--- Stats after diffusion loop ---")
-    print_stats(latents, name="Final latents")
+    print("Diffusion process complete.")
 
     # --- Decode and Save Image ---
     print("\n--- Decoding latents with VAE ---")
-    latents_for_vae = latents / 0.18215
-    print_stats(latents_for_vae, name="Scaled latents for VAE")
+    latents = latents / 0.18215
     
     # Cast to float32 for PyTorch VAE
-    latents_for_vae = latents_for_vae.astype(jnp.float32)
-    latents_torch = torch.from_numpy(np.array(latents_for_vae)).to(vae.device)
+    latents = latents.astype(jnp.float32)
+    latents_torch = torch.from_numpy(np.array(latents)).to(vae.device)
     image = vae.decode(latents_torch).sample
-    print_stats(image, name="Decoded image (torch tensor)")
 
     # Convert to numpy and rescale to [0, 255]
     image = image.detach().cpu().numpy()
     image = (image / 2 + 0.5).clip(0, 1)
-    print_stats(image, name="Rescaled image to [0, 1]")
-    
     image = (image * 255).astype(np.uint8)
-    print_stats(image, name="Final image for PIL [0, 255]")
     
     # Save the images
     for i in range(n):
