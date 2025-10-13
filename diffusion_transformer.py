@@ -203,7 +203,7 @@ class DiffusionTransformer(nnx.Module):
         half = dim // 2
         freqs = jnp.exp(
             -jnp.log(max_period) * jnp.arange(start=0, stop=half, dtype=jnp.float32) / half
-        )
+            )
         args = jnp.float32(t) * freqs
         embedding = jnp.concatenate([jnp.cos(args), jnp.sin(args)], axis=-1)
         if dim % 2:
@@ -211,30 +211,30 @@ class DiffusionTransformer(nnx.Module):
         return embedding.astype(self.dtype)
 
     def forward(self, x, timestep, y):
-        print("--- Start of Forward Pass ---")
-        print_stats_jax(x, name="Input x")
+        #print("--- Start of Forward Pass ---")
+        #print_stats_jax(x, name="Input x")
         
         x = self.mapper.convert_to_stream(x)
-        print_stats_jax(x, name="After convert_to_stream")
+        #print_stats_jax(x, name="After convert_to_stream")
         
         x = x + self.pos_embed
-        print_stats_jax(x, name="After pos_embed")
+        #print_stats_jax(x, name="After pos_embed")
         
         time_embedding = self.time_MLP(self.time_embed(timestep))
         class_embedding = self.y_embedder(y)
         conditioning = time_embedding + class_embedding
-        print_stats_jax(conditioning, name="Combined Conditioning")
+        #print_stats_jax(conditioning, name="Combined Conditioning")
 
         for i, layer in enumerate(self.layers):
             x = layer.forward(x, conditioning)
-            print_stats_jax(x, name=f"After DiT Block {i}")
+            #print_stats_jax(x, name=f"After DiT Block {i}")
             
         x = self.final_layer(x, conditioning)
-        print_stats_jax(x, name="After final_layer")
+        #print_stats_jax(x, name="After final_layer")
         
         x = self.mapper.convert_to_patches(x)
-        print_stats_jax(x, name="Final Output")
-        print("--- End of Forward Pass ---")
+        #print_stats_jax(x, name="Final Output")
+        #print("--- End of Forward Pass ---")
         return x
             
     def get_weights(self):
@@ -245,8 +245,8 @@ class DiffusionTransformer(nnx.Module):
 
     def __call__(self, x, timestep, y):
 
-        # func = lambda x, timestep, y: self.forward(x, timestep, y)
-        # return vmap(func, in_axes=(0, 0, 0), out_axes=0)(x, timestep, y)
+        func = lambda x, timestep, y: self.forward(x, timestep, y)
+        return vmap(func, in_axes=(0, 0, 0), out_axes=0)(x, timestep, y)
 
         print("!!! WARNING: Running without vmap for debugging. This will be slow. !!!")
         # Manually loop over the batch dimension for debugging prints

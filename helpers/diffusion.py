@@ -1,5 +1,7 @@
 import numpy as np
 import jax.numpy as jnp
+import jax
+
 
 # This file is a JAX/NumPy port of the original PyTorch implementation in
 # https://github.com/openai/guided-diffusion/blob/main/guided_diffusion/gaussian_diffusion.py

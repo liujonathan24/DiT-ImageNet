@@ -21,6 +21,7 @@ def convert_weights(pytorch_weights_path, jax_model):
     
     # Load PyTorch weights and print all keys
     pt_weights = torch.load(pytorch_weights_path, map_location="cpu")
+
     print("--- All PyTorch Keys ---")
     for key in sorted(pt_weights.keys()):
         print(key)
@@ -47,6 +48,9 @@ def convert_weights(pytorch_weights_path, jax_model):
         print(key)
     print("--------------------")
 
+
+    #print(pt_weights.keys())
+
     # Get the JAX model's state
     jax_state = nnx.state(jax_model)
     
@@ -56,7 +60,7 @@ def convert_weights(pytorch_weights_path, jax_model):
     # --- Weight Mapping ---
     weight_mapping = {
         # Class Embedder
-        "y_embedder.embedding": ("y_embedder.embedding_table.weight", False),
+        "y_embedder.embedding..value": ("y_embedder.embedding_table.weight", False),
 
         # Patch Embedder
         "mapper.patch_embeddings.kernel..value": ("x_embedder.proj.weight", True),
@@ -119,7 +123,7 @@ def convert_weights(pytorch_weights_path, jax_model):
                 new_flat_state.append(jax_value)
                 continue
 
-            # print(f"Converting: {pt_name} -> {path_str}")
+            print(f"Converting: {pt_name} -> {path_str}")
 
             # Convert tensor to numpy array
             value = pt_weights[pt_name].detach().cpu().numpy()
