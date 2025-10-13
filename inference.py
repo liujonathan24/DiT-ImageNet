@@ -31,6 +31,8 @@ def main(args):
 
     # Load the VAE
     vae = get_sd_vae()
+    vae.to('cuda')
+    vae.eval()
 
     # --- Diffusion Setup ---
     diffusion = Diffusion(train_config.linear_variance_min, train_config.linear_variance_max, train_config.tmax)
@@ -74,7 +76,9 @@ def main(args):
     print("Decoding latents with VAE...")
     # The model was trained on latents scaled by 0.18215
     latents = latents / 0.18215
-    image = vae.decode(latents).sample
+    import torch
+    latents_torch = torch.from_numpy(np.array(latents)).to(vae.device) 
+    image = vae.decode(latents_torch).sample
 
     # Convert to numpy and rescale to [0, 255]
     image = image.detach().cpu().numpy()
@@ -84,7 +88,10 @@ def main(args):
 
     # Save the image
     pil_image = Image.fromarray(image)
-    pil_image.save(args.output_path)
+    if args.output_path == "generated_image.png":
+        pil_image.save(f"{args.steps}_generated_image.png")
+    else:
+        pil_image.save(args.output_path)
     print(f"Image saved to {args.output_path}")
 
 if __name__ == "__main__":
