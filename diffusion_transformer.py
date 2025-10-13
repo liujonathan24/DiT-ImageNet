@@ -245,8 +245,8 @@ class DiffusionTransformer(nnx.Module):
 
     def __call__(self, x, timestep, y):
 
-        func = lambda x, timestep, y: self.forward(x, timestep, y)
-        return vmap(func, in_axes=(0, 0, 0), out_axes=0)(x, timestep, y)
+        # func = lambda x, timestep, y: self.forward(x, timestep, y)
+        # return vmap(func, in_axes=(0, 0, 0), out_axes=0)(x, timestep, y)
 
         print("!!! WARNING: Running without vmap for debugging. This will be slow. !!!")
         # Manually loop over the batch dimension for debugging prints

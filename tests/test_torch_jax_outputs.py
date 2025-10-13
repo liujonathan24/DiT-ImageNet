@@ -3,15 +3,23 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import argparse
+import flax.nnx as nnx
 
 # JAX model and helpers
 from diffusion_transformer import DiffusionTransformer
-from helpers.config import modelConfig
+from helpers.config import modelConfig, trainConfig
 from scripts.convert_weights import convert_weights
+from helpers.checkpoint import restore_checkpoint
 
 # PyTorch model and helpers
 # Note: This assumes you have the original DiT repo's `models.py` file
-from models import DiT_models
+# <<<<<<< Updated upstream
+# from models import DiT_models
+#=======
+## and a `download.py` file to load the checkpoint.
+from torch_dit.models import DiT_models
+#from torch_dit.download import find_model
+#>>>>>>> Stashed changes
 
 def print_comparison(pt_tensor, jax_tensor, name):
     """Compares a PyTorch and JAX tensor and prints the MAE."""
@@ -31,12 +39,14 @@ def main(args):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     torch.set_grad_enabled(False)
 
+
     # --- Load PyTorch Model ---
     print("--- Loading PyTorch Model ---")
     pt_model = DiT_models[args.model](
         input_size=32,
         num_classes=1000
     ).to(device)
+
     
     # Load state dict directly, bypassing find_model
     state_dict = torch.load(args.pt_ckpt, map_location="cpu")
@@ -47,10 +57,19 @@ def main(args):
 
     # --- Load and Convert JAX Model ---
     print("\n--- Loading and Converting JAX Model ---")
-    jax_config = modelConfig(type='DiT-XL')
-    jax_model = DiffusionTransformer(jax_config)
-    updated_jax_state = convert_weights(args.pt_ckpt, jax_model)
-    nnx.update(jax_model, updated_jax_state)
+    # jax_config = modelConfig(type='DiT-XL')
+    # jax_model = DiffusionTransformer(jax_config)
+    if jax.devices("gpu"):
+        gpu_device = jax.devices("gpu")[0]
+    else:
+        gpu_device = None
+    model_config = modelConfig(type='DiT-XL')
+
+    # Restore the JAX model from the converted checkpoint
+    jax_model, _ = restore_checkpoint(args.checkpoint_path, model_config, trainConfig(), gpu_device)
+
+    # updated_jax_state = convert_weights(args.pt_ckpt, jax_model)
+    # nnx.update(jax_model, updated_jax_state)
     print("JAX Model Loaded and Weights Converted.")
 
     # --- Create Identical Inputs ---
@@ -127,6 +146,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, choices=list(DiT_models.keys()), default="DiT-XL/2")
-    parser.add_argument("--pt_ckpt", type=str, help="Path to the PyTorch DiT checkpoint (.pt file).", default="DiT-XL-2-256x256.pt")
+    parser.add_argument("--pt_ckpt", type=str, help="Path to the PyTorch DiT checkpoint (.pt file).", default="/scratch/network/jl0796/DiT-ImageNet/pretrained_models/DiT-XL-2-256x256_pretrained.pt")
+    parser.add_argument("--checkpoint_path", type=str, default="pretrained/")
     args = parser.parse_args()
     main(args)

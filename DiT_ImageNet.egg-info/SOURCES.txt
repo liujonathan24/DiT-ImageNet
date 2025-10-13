@@ -20,6 +20,10 @@ helpers/logging_utils.py
 helpers/preprocess_data.py
 helpers/preprocess_data_torch.py
 helpers/reshape_images.py
+tests/test_torch_jax_outputs.py
+torch/__init__.py
+torch/download.py
+torch/models.py
 vae/__init__.py
 vae/import_sd_vae.py
 vae/import_sd_vae_torch.py
