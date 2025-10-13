@@ -19,42 +19,11 @@ def create_dit_xl_config():
 def convert_weights(pytorch_weights_path, jax_model):
     """Converts and loads PyTorch weights into the JAX model."""
     
-    # Load PyTorch weights and print all keys
+    # Load PyTorch weights
     pt_weights = torch.load(pytorch_weights_path, map_location="cpu")
 
-    print("--- All PyTorch Keys ---")
-    for key in sorted(pt_weights.keys()):
-        print(key)
-    print("------------------------")
-
-    # Get JAX model state and print all keys
+    # Get JAX model state
     jax_state = nnx.state(jax_model)
-    flat_state_with_paths, treedef = jax.tree_util.tree_flatten_with_path(jax_state)
-    print("\n--- All JAX Keys ---")
-    jax_keys = []
-    for key_path, value in flat_state_with_paths:
-        path_parts = []
-        for k in key_path:
-            if hasattr(k, 'idx'):
-                path_parts.append(str(k.idx))
-            elif hasattr(k, 'key'):
-                path_parts.append(str(k.key))
-            else:
-                path_parts.append(str(k))
-        path_str = ".".join(path_parts)
-        if path_str.startswith('.'): path_str = path_str[1:]
-        jax_keys.append(path_str)
-    for key in sorted(jax_keys):
-        print(key)
-    print("--------------------")
-
-
-    #print(pt_weights.keys())
-
-    # Get the JAX model's state
-    jax_state = nnx.state(jax_model)
-    
-    # Flatten the state using JAX's tree utility to get paths and values
     flat_state_with_paths, treedef = jax.tree_util.tree_flatten_with_path(jax_state)
 
     # --- Weight Mapping ---
@@ -100,6 +69,10 @@ def convert_weights(pytorch_weights_path, jax_model):
         weight_mapping[f"layers.{i}.cLinWeights.kernel..value"] = (f"blocks.{i}.adaLN_modulation.1.weight", True)
         weight_mapping[f"layers.{i}.cLinWeights.bias..value"] = (f"blocks.{i}.adaLN_modulation.1.bias", False)
 
+    # --- Verification Setup ---
+    all_pt_keys = set(pt_weights.keys())
+    updated_jax_keys = set()
+
     # --- Conversion Loop ---
     new_flat_state = []
     for key_path, jax_value in flat_state_with_paths:
@@ -119,60 +92,68 @@ def convert_weights(pytorch_weights_path, jax_model):
             pt_name, should_transpose = weight_mapping[path_str]
 
             if pt_name not in pt_weights:
-                print(f"Warning: PyTorch weight {pt_name} not found for JAX param {path_str}. Using original JAX param.")
+                print(f"Warning: PyTorch weight {pt_name} for JAX param {path_str} not found in checkpoint. Skipping.")
                 new_flat_state.append(jax_value)
                 continue
 
-            print(f"Converting: {pt_name} -> {path_str}")
-
-            # Convert tensor to numpy array
             value = pt_weights[pt_name].detach().cpu().numpy()
 
-            # Special case for pos_embed shape
             if pt_name == 'pos_embed' and value.ndim == 3:
                 value = np.squeeze(value, axis=0)
 
-            # Transpose if necessary
             if should_transpose:
-                if value.ndim == 2: # For Linear layers
+                if value.ndim == 2:
                     value = value.T
-                elif value.ndim == 4 and hasattr(jax_value, 'ndim') and jax_value.ndim == 4: # For Conv layers
+                elif value.ndim == 4 and hasattr(jax_value, 'ndim') and jax_value.ndim == 4:
                     value = np.transpose(value, (2, 3, 1, 0))
 
-            # Check shapes
             if hasattr(jax_value, 'shape') and value.shape != jax_value.shape:
-                print(f"Converting: {pt_name} -> {path_str}")
-                print(f"Shape mismatch for {path_str}: JAX is {jax_value.shape}, PyTorch is {value.shape} after potential transpose. Skipping.")
+                print(f"Shape mismatch for {path_str}: JAX is {jax_value.shape}, PyTorch is {value.shape}. Skipping.")
                 new_flat_state.append(jax_value)
                 continue
-
-            new_flat_state.append(jnp.asarray(value))
+            
+            # If we reach here, the conversion is successful for this key
+            updated_jax_keys.add(path_str)
+            # Remove the used key from the set of all PyTorch keys
+            if pt_name in all_pt_keys:
+                all_pt_keys.remove(pt_name)
+            
+            new_flat_state.append(jnp.asarray(value, dtype=jax_value.dtype))
         else:
-            # Keep original parameter if no mapping is defined
             new_flat_state.append(jax_value)
 
-    # Reconstruct the state using the new flattened list of values
+    # Reconstruct the state
     new_jax_state = jax.tree_util.tree_unflatten(treedef, new_flat_state)
 
-    print("\nWeight conversion process finished.")
-    print("Please review the warnings and fill in the missing mappings (TODOs).")
+    # --- Verification Asserts ---
+    print("\n--- Verification --- ")
+    unupdated_jax_keys = set(weight_mapping.keys()) - updated_jax_keys
+    assert not unupdated_jax_keys, (
+        f"Error: {len(unupdated_jax_keys)} JAX parameters in the mapping were not updated (e.g., due to shape mismatch):\n"
+        f"{sorted(list(unupdated_jax_keys))}"
+    )
+    print("Success: All mapped JAX parameters were successfully updated.")
+
+    # Assert that all keys from the PyTorch file have been used
+    assert not all_pt_keys, (
+        f"Error: {len(all_pt_keys)} weights from the PyTorch file were not mapped to the JAX model:\n"
+        f"{sorted(list(all_pt_keys))}"
+    )
+    print("Success: All weights from the PyTorch file were successfully converted.")
+    print("--------------------\n")
 
     return new_jax_state
 
 def main(args):
-    # 1. Create JAX model with DiT-XL config
     print("Creating DiT-XL model configuration...")
     model_config = modelConfig(type="DiT-XL")
     jax_model = DiffusionTransformer(model_config)
 
-    # 2. Convert weights
     print(f"\nStarting weight conversion from: {args.pytorch_checkpoint_path}")
     updated_jax_state = convert_weights(args.pytorch_checkpoint_path, jax_model)
 
-    # 3. Update the model with the new state
     nnx.update(jax_model, updated_jax_state)
 
-    # 4. Save the converted JAX model
     if args.output_dir:
         print(f"\nSaving converted JAX model to: {args.output_dir}")
         os.makedirs(args.output_dir, exist_ok=True)
