@@ -11,9 +11,7 @@ from scripts.convert_weights import convert_weights
 
 # PyTorch model and helpers
 # Note: This assumes you have the original DiT repo's `models.py` file
-# and a `download.py` file to load the checkpoint.
-from torch.models import DiT_models
-from torch.download import find_model
+from models import DiT_models
 
 def print_comparison(pt_tensor, jax_tensor, name):
     """Compares a PyTorch and JAX tensor and prints the MAE."""
@@ -39,7 +37,9 @@ def main(args):
         input_size=32,
         num_classes=1000
     ).to(device)
-    state_dict = find_model(f"DiT-XL-2-256x256.pt")
+    
+    # Load state dict directly, bypassing find_model
+    state_dict = torch.load(args.pt_ckpt, map_location="cpu")
     pt_model.load_state_dict(state_dict)
     pt_model.eval()
     pt_model.to(dtype=torch.bfloat16)
@@ -49,7 +49,7 @@ def main(args):
     print("\n--- Loading and Converting JAX Model ---")
     jax_config = modelConfig(type='DiT-XL')
     jax_model = DiffusionTransformer(jax_config)
-    updated_jax_state = convert_weights(f"DiT-XL-2-256x256.pt", jax_model)
+    updated_jax_state = convert_weights(args.pt_ckpt, jax_model)
     nnx.update(jax_model, updated_jax_state)
     print("JAX Model Loaded and Weights Converted.")
 
@@ -77,11 +77,11 @@ def main(args):
     pt_x = pt_model.x_embedder(pt_z) + pt_model.pos_embed
     pt_c = pt_model.t_embedder(pt_model.timestep_embedding(pt_t)) + pt_model.y_embedder(pt_y)
     # JAX
+    # Note: JAX model is not vmapped here, so we operate on a single batch item
     jax_x = jax_model.mapper.convert_to_stream(jax_z[0]) + jax_model.pos_embed
     jax_c = jax_model.time_MLP(jax_model.time_embed(jax_t[0])) + jax_model.y_embedder(jax_y[0])
     
     # Comparison
-    # Note: pt_x has a batch dim, jax_x does not. We squeeze pt_x.
     pt_x_np = print_comparison(pt_x.squeeze(0), jax_x, "Initial Embeddings (x)")
     pt_c_np = print_comparison(pt_c.squeeze(0), jax_c, "Initial Conditioning (c)")
 
@@ -89,6 +89,9 @@ def main(args):
     # Use PyTorch outputs as input for the next stage to prevent error cascade
     jax_x = jnp.array(pt_x_np)
     jax_c = jnp.array(pt_c_np)
+    # The PyTorch model expects a batch dimension, so we add it back
+    pt_x = torch.from_numpy(pt_x_np).unsqueeze(0).to(device)
+    pt_c = torch.from_numpy(pt_c_np).unsqueeze(0).to(device)
 
     for i in range(len(pt_model.blocks)):
         print(f"\n--- Block {i} ---")
@@ -99,8 +102,9 @@ def main(args):
 
         # Comparison
         pt_x_np = print_comparison(pt_x.squeeze(0), jax_x, f"Block {i} Output")
-        # Update JAX input for next iteration with the PyTorch ground truth
+        # Update inputs for next iteration with the PyTorch ground truth
         jax_x = jnp.array(pt_x_np)
+        pt_x = torch.from_numpy(pt_x_np).unsqueeze(0).to(device)
 
     # 3. Final Layer
     print("\n--- Final Layer ---")
@@ -123,5 +127,6 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, choices=list(DiT_models.keys()), default="DiT-XL/2")
+    parser.add_argument("--pt_ckpt", type=str, help="Path to the PyTorch DiT checkpoint (.pt file).", default="DiT-XL-2-256x256.pt")
     args = parser.parse_args()
     main(args)
