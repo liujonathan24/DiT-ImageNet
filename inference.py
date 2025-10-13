@@ -6,6 +6,7 @@ import argparse
 import os
 from PIL import Image
 from tqdm import tqdm
+import torch
 
 from helpers.config import modelConfig, trainConfig
 from helpers.checkpoint import restore_checkpoint
@@ -49,18 +50,18 @@ def main(args):
     # --- Inference Loop --- 
     print(f"Starting diffusion sampling with CFG (scale={args.cfg_scale})...")
     
-    # 1. Start with random noise
+    # 1. Start with random noise (this will be the conditional part)
     rng, noise_rng = jax.random.split(rng)
     latents = jax.random.normal(noise_rng, (n, model_config.image_channels, model_config.input_size, model_config.input_size))
-    # Duplicate noise for CFG
-    latents = jnp.concatenate([latents, latents], axis=0)
 
     # 2. Denoising loop
     for t in tqdm(reversed(range(args.steps)), total=args.steps):
+        # Create the input for the model by duplicating the latents for CFG
+        latents_input = jnp.concatenate([latents, latents], axis=0)
         t_batch = jnp.array([t] * (n * 2)) # Create a batch of timesteps for CFG
         
         # Predict noise and variance with CFG
-        model_output = model(latents, t_batch, y_batch)
+        model_output = model(latents_input, t_batch, y_batch)
         
         # Split the output into conditional and unconditional predictions
         cond_output, uncond_output = jnp.split(model_output, 2, axis=0)
@@ -77,7 +78,7 @@ def main(args):
         beta_t = diffusion.betas[t]
 
         # Denoise one step using only the predicted noise (epsilon)
-        # This update is applied to the full batch (cond and uncond latents)
+        # The update is applied to the original `latents` tensor (shape [n, ...])
         coeff = (1 - alpha_t) / jnp.sqrt(1 - alpha_bar_t)
         latents = (1 / jnp.sqrt(alpha_t)) * (latents - coeff * predicted_noise)
 
@@ -91,12 +92,8 @@ def main(args):
 
     # --- Decode and Save Image ---
     print("Decoding latents with VAE...")
-    # Take only the conditional samples
-    latents = latents[0:n]
-    
     # The model was trained on latents scaled by 0.18215
     latents = latents / 0.18215
-    import torch
     latents_torch = torch.from_numpy(np.array(latents)).to(vae.device) 
     image = vae.decode(latents_torch).sample
 
@@ -108,6 +105,7 @@ def main(args):
     # Save the images
     for i in range(n):
         img_data = image[i]
+        # The VAE output is CHW, but PIL expects HWC, so we transpose
         img_data = np.transpose(img_data, (1, 2, 0))
         pil_image = Image.fromarray(img_data)
         
