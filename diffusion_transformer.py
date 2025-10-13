@@ -6,6 +6,16 @@ from helpers.config import modelConfig
 
 xavier_init = nnx.initializers.xavier_uniform()
 
+def print_stats_jax(tensor, name="Tensor"):
+    if jnp.any(jnp.isnan(tensor)):
+        print(f"!!! {name} contains NaN values !!!")
+    mean, std, min_val, max_val = float(jnp.mean(tensor)), float(jnp.std(tensor)), float(jnp.min(tensor)), float(jnp.max(tensor))
+    print(
+        f"{name} stats: "
+        f"mean={mean:.4f}, std={std:.4f}, "
+        f"min={min_val:.4f}, max={max_val:.4f}, shape={tensor.shape}, dtype={tensor.dtype}"
+    )
+
 class MHA(nnx.Module):
     def __init__(self, config: modelConfig, rng: jax.random.PRNGKey):
         
@@ -23,37 +33,28 @@ class MHA(nnx.Module):
         return self.forward(x)
 
     def forward(self, x):
-        # x: [L, Hidden]
-        y = self.qkv_proj(x)                     # [L, 3H]
-        y = y.reshape(self.length, 3, self.num_heads, self.d_head)   # [L, 3, head, d]
-        y = jnp.transpose(y, (1, 2, 0, 3))       # [3, h, L, d]
-        q, k, v = y[0], y[1], y[2]               # each [h, L, d]
+        y = self.qkv_proj(x)
+        y = y.reshape(self.length, 3, self.num_heads, self.d_head)
+        y = jnp.transpose(y, (1, 2, 0, 3))
+        q, k, v = y[0], y[1], y[2]
 
-        values, attention = self.scaled_dot_product(q, k, v)  # values: [h, L, d]
-        values = jnp.transpose(values, (1, 0, 2)).reshape(self.length, self.hidden)  # [L, H]
-        values = self.out_proj(values)           # [L, H]
-        return values, attention                 # attention: [h, L, L]
+        values, attention = self.scaled_dot_product(q, k, v)
+        values = jnp.transpose(values, (1, 0, 2)).reshape(self.length, self.hidden)
+        values = self.out_proj(values)
+        return values, attention
   
     def scaled_dot_product(self, q, k, v):
-        """Implements scaled dot product with jax.numpy's functionality"""
-        # q, k, v: [num_heads, L, d_head]
         d = q.shape[-1]
         scale = 1.0 / jnp.sqrt(d)
-        # [num_heads, L, L]
-        attn_logits = jnp.einsum('hld,hmd->hlm', q, k) * scale
+        attn_logits = jnp.einsum('hld,hmd->hlm', q, k)
+        attn_logits = attn_logits * scale
         attn = jax.nn.softmax(attn_logits, axis=-1)
-        # [num_heads, L, d_head]
         out = jnp.einsum('hlm,hmd->hld', attn, v)
         return out, attn
 
 
 class MLP(nnx.Module):
     def __init__(self, config: modelConfig, rng: jax.random.PRNGKey):
-        """
-        Inititializes a MLP block. Has reduced 
-        options compared to ViT implementations, but 
-        sufficient for the task. Uses GeLU activations.
-        """
         fc1_rng, fc2_rng = jax.random.split(rng)
         self.dtype = config.dtype
         self.fc1 = nnx.Linear(config.DiT_hidden_size, config.MLP_hidden_size, kernel_init=xavier_init, rngs=nnx.Rngs(fc1_rng), dtype=self.dtype)
@@ -92,38 +93,28 @@ def zero_init(key, shape, dtype):
 
 class DiTBlock(nnx.Module):
     def __init__(self, config: modelConfig, rng: jax.random.PRNGKey):
-        """
-        Initialize a DiT block.
-        """
         self.dtype = config.dtype
         ln1_rng, ln2_rng, mha_rng, mlp_rng, cLin_rng = jax.random.split(rng, 5)
         self.LayerNorm1 = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(ln1_rng), use_scale=False, use_bias=False, dtype=self.dtype)
         self.LayerNorm2 = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(ln2_rng), use_scale=False, use_bias=False, dtype=self.dtype)
         self.MHA = MHA(config, mha_rng)
         self.MLP = MLP(config, mlp_rng) 
-
-        # MLP for conditioning info
         self.cLinWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size * 6, rngs=nnx.Rngs(cLin_rng), kernel_init=zero_init, dtype=self.dtype)  
     
     def __call__(self, x, conditioning):
-        """Uses vmap to process batched inputs."""
         return self.forward(x, conditioning)
 
     def forward(self, x, conditioning):
         beta1, alpha1, gamma1, beta2, alpha2, gamma2 = self.cLinWeights(nnx.silu(conditioning)).reshape((6, -1))
-
         tmp = self.LayerNorm1(x)
         tmp = (alpha1+1)*tmp + beta1
         tmp, attn = self.MHA(tmp)
         tmp = gamma1 * tmp
-
         x += tmp
-
         tmp = self.LayerNorm2(x)
         tmp = (alpha2+1)*tmp + beta2
         tmp = self.MLP(tmp)
         tmp = gamma2 * tmp
-
         x += tmp
         return x
 
@@ -208,9 +199,6 @@ class DiffusionTransformer(nnx.Module):
         return pe
 
     def time_embed(self, t, max_period=10000):
-        """
-        Create sinusoidal timestep embeddings.
-        """
         dim = self.config.time_embed_dim
         half = dim // 2
         freqs = jnp.exp(
@@ -223,20 +211,30 @@ class DiffusionTransformer(nnx.Module):
         return embedding.astype(self.dtype)
 
     def forward(self, x, timestep, y):
-        """
-        Forward pass of DiT.
-        """
+        print("--- Start of Forward Pass ---")
+        print_stats_jax(x, name="Input x")
+        
         x = self.mapper.convert_to_stream(x)
+        print_stats_jax(x, name="After convert_to_stream")
+        
         x = x + self.pos_embed
+        print_stats_jax(x, name="After pos_embed")
         
         time_embedding = self.time_MLP(self.time_embed(timestep))
         class_embedding = self.y_embedder(y)
         conditioning = time_embedding + class_embedding
+        print_stats_jax(conditioning, name="Combined Conditioning")
 
-        for layer in range(self.n_layers):
-            x = self.layers[layer].forward(x, conditioning)
+        for i, layer in enumerate(self.layers):
+            x = layer.forward(x, conditioning)
+            print_stats_jax(x, name=f"After DiT Block {i}")
+            
         x = self.final_layer(x, conditioning)
+        print_stats_jax(x, name="After final_layer")
+        
         x = self.mapper.convert_to_patches(x)
+        print_stats_jax(x, name="Final Output")
+        print("--- End of Forward Pass ---")
         return x
             
     def get_weights(self):
@@ -246,12 +244,10 @@ class DiffusionTransformer(nnx.Module):
         nnx.update(self, weights)
 
     def __call__(self, x, timestep, y): 
-        """Uses vmap to process batched inputs."""
         func = lambda x, timestep, y: self.forward(x, timestep, y)
         return vmap(func, in_axes=(0, 0, 0), out_axes=0)(x, timestep, y)
 
 if __name__=="__main__":
-  # Testing
   config = modelConfig(type='DiT-XL')
   rng = jax.random.PRNGKey(0)
 
