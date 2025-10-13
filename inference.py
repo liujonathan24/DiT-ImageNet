@@ -40,76 +40,82 @@ def main(args):
     rng = jax.random.PRNGKey(args.seed)
 
     # --- Classifier-Free Guidance Setup ---
-    # Create labels for CFG
     class_labels = [int(label) for label in args.class_labels.split(',')]
     n = len(class_labels)
     y = jnp.array(class_labels)
-    y_null = jnp.array([model_config.num_classes] * n) # Use num_classes as the null label
+    y_null = jnp.array([model_config.num_classes] * n)
     y_batch = jnp.concatenate([y, y_null], axis=0)
 
     # --- Inference Loop --- 
     print(f"Starting diffusion sampling with CFG (scale={args.cfg_scale})...")
     
-    # 1. Start with random noise (this will be the conditional part)
+    # 1. Start with random noise
     rng, noise_rng = jax.random.split(rng)
     latents = jax.random.normal(noise_rng, (n, model_config.image_channels, model_config.input_size, model_config.input_size))
+    print(f"\n--- Initial Latents Stats ---")
+    print(f"mean={jnp.mean(latents):.4f}, std={jnp.std(latents):.4f}, min={jnp.min(latents):.4f}, max={jnp.max(latents):.4f}")
 
     # 2. Denoising loop
     for t in tqdm(reversed(range(args.steps)), total=args.steps):
         # Create the input for the model by duplicating the latents for CFG
         latents_input = jnp.concatenate([latents, latents], axis=0)
-        t_batch = jnp.array([t] * (n * 2)) # Create a batch of timesteps for CFG
+        t_batch = jnp.array([t] * (n * 2))
         
+        # Print stats at key intervals
+        if t == args.steps - 1 or t == args.steps // 2 or t == 0:
+            print(f"\n--- Stats at step {t} ---")
+            print(f"  Latents (start of step): mean={jnp.mean(latents):.4f}, std={jnp.std(latents):.4f}")
+
         # Predict noise and variance with CFG
         model_output = model(latents_input, t_batch, y_batch)
-        
-        # Split the output into conditional and unconditional predictions
         cond_output, uncond_output = jnp.split(model_output, 2, axis=0)
-        
-        # Combine them using the CFG formula
         cfg_output = uncond_output + args.cfg_scale * (cond_output - uncond_output)
-
-        # Split the combined output into predicted noise and variance
-        predicted_noise, predicted_variance = jnp.split(cfg_output, 2, axis=1)
+        predicted_noise, _ = jnp.split(cfg_output, 2, axis=1)
         
-        # Get diffusion schedule parameters for the current timestep
+        # Get diffusion schedule parameters
         alpha_t = diffusion.alphas[t]
         alpha_bar_t = diffusion.alpha_bars[t]
         beta_t = diffusion.betas[t]
 
-        # Denoise one step using only the predicted noise (epsilon)
-        # The update is applied to the original `latents` tensor (shape [n, ...])
+        # Denoise one step
         coeff = (1 - alpha_t) / jnp.sqrt(1 - alpha_bar_t)
         latents = (1 / jnp.sqrt(alpha_t)) * (latents - coeff * predicted_noise)
 
-        # Add noise back in (except for the last step)
+        # Add noise back in
         if t > 0:
             rng, noise_rng = jax.random.split(rng)
             z = jax.random.normal(noise_rng, latents.shape)
             latents += jnp.sqrt(beta_t) * z
 
-    print("Diffusion process complete.")
+        if t == args.steps - 1 or t == args.steps // 2 or t == 0:
+            print(f"  Latents (end of step):   mean={jnp.mean(latents):.4f}, std={jnp.std(latents):.4f}")
+
+    print("\n--- Stats after diffusion loop ---")
+    print(f"Final latents: mean={jnp.mean(latents):.4f}, std={jnp.std(latents):.4f}, min={jnp.min(latents):.4f}, max={jnp.max(latents):.4f}")
 
     # --- Decode and Save Image ---
-    print("Decoding latents with VAE...")
-    # The model was trained on latents scaled by 0.18215
+    print("\n--- Decoding latents with VAE ---")
     latents = latents / 0.18215
-    latents_torch = torch.from_numpy(np.array(latents)).to(vae.device) 
+    print(f"Scaled latents for VAE: mean={jnp.mean(latents):.4f}, std={jnp.std(latents):.4f}")
+    
+    latents_torch = torch.from_numpy(np.array(latents)).to(vae.device)
     image = vae.decode(latents_torch).sample
+    print(f"Decoded image (torch tensor): mean={image.mean():.4f}, std={image.std():.4f}, min={image.min():.4f}, max={image.max():.4f}")
 
     # Convert to numpy and rescale to [0, 255]
     image = image.detach().cpu().numpy()
     image = (image / 2 + 0.5).clip(0, 1)
+    print(f"Rescaled image to [0, 1]: mean={image.mean():.4f}, std={image.std():.4f}")
+    
     image = (image * 255).astype(np.uint8)
+    print(f"Final image for PIL [0, 255]: mean={image.mean():.4f}, std={image.std():.4f}")
     
     # Save the images
     for i in range(n):
         img_data = image[i]
-        # The VAE output is CHW, but PIL expects HWC, so we transpose
         img_data = np.transpose(img_data, (1, 2, 0))
         pil_image = Image.fromarray(img_data)
         
-        # Create a unique filename for each image
         base, ext = os.path.splitext(args.output_path)
         output_filename = f"{base}_class_{class_labels[i]}_steps_{args.steps}{ext}"
         pil_image.save(output_filename)
