@@ -36,7 +36,7 @@ def convert_weights(pytorch_weights_path, jax_model):
         "mapper.patch_embeddings.bias..value": ("x_embedder.proj.bias", False),
 
         # Positional Embedding
-        "pos_embed.value": ("pos_embed", False),
+        "pos_embed": ("pos_embed", False),
 
         # Time MLP
         "time_MLP.fc1.kernel..value": ("t_embedder.mlp.0.weight", True),
@@ -169,6 +169,9 @@ def main(args):
         print("Save complete.")
 
 if __name__ == "__main__":
+    """Run: 
+    python -m scripts.convert_weights -pt /scratch/network/jl0796/Torch_DiT/pretrained_models/DiT-XL-2-256x256.pt -o /scratch/network/jl0796/DiT-ImageNet/pretrained
+    """
     parser = argparse.ArgumentParser(description="Convert PyTorch DiT weights to JAX.")
     parser.add_argument("--pytorch_checkpoint_path", "-pt", type=str, required=True, help="Path to the PyTorch .pt or .pth checkpoint file.")
     parser.add_argument("--output_dir", "-o", type=str, required=True, help="Directory to save the converted JAX checkpoint.")
