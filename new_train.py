@@ -11,7 +11,7 @@ import argparse
 import os
 import orbax.checkpoint as ocp
 import time
-from helpers.diffusion import Diffusion
+from helpers.create_diffusion import create_diffusion
 from vae.import_sd_vae_torch import get_sd_vae
 from PIL import Image
 import numpy as np
@@ -54,7 +54,8 @@ def main(args):
     trainconfig.ckpt_frequency = 100 # 10
     trainconfig.epochs = 135000 # 1500
 
-    diffusion = Diffusion(trainconfig.linear_variance_min, trainconfig.linear_variance_max, trainconfig.tmax)
+    #diffusion = Diffusion(trainconfig.linear_variance_min, trainconfig.linear_variance_max, trainconfig.tmax)
+    diffusion = create_diffusion(trainconfig.tmax)
 
     # Load DiT Model
     if args.resume:

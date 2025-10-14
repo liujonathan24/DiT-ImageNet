@@ -19,6 +19,7 @@ class modelConfig:
             # Architecture details
             self.n_layers = 12
             self.n_heads = 6
+            self.time_embed_dim = 256
             self.DiT_hidden_size = 384
             self.MLP_hidden_size = self.DiT_hidden_size * 4 # TODO: consider adjusting this. 
             self.token_length = int((self.input_size/self.patch_size)**2)

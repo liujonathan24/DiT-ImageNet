@@ -16,7 +16,7 @@ def get_named_beta_schedule(schedule_name, num_diffusion_timesteps):
         raise NotImplementedError(f"unknown beta schedule: {schedule_name}")
 
 
-def create_diffusion(steps, noise_schedule="linear", model_mean_type="epsilon", model_var_type="fixed_small"):
+def create_diffusion(steps, noise_schedule="linear", model_mean_type="epsilon", model_var_type="learned_range"):
     betas = get_named_beta_schedule(noise_schedule, steps)
     
     # For now, we hardcode the mean and var types from the DiT paper
