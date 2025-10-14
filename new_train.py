@@ -84,7 +84,20 @@ def main(args):
     options = ocp.CheckpointManagerOptions(max_to_keep=5)
     mngr = ocp.CheckpointManager(models_dir, options=options)
     opt = optax.adamw(learning_rate=trainconfig.learning_rate)
-    optimizer = nnx.Optimizer(DiTmodel, opt, wrt=nnx.Param)
+
+    # Partition parameters into trainable and frozen. 'pos_embed' will be frozen.
+    def is_trainable(path, node):
+        # A path is a tuple of keys. We check if 'pos_embed' is in the path.
+        for key in path:
+            if hasattr(key, 'key') and key.key == 'pos_embed':
+                return False
+        return True
+
+    # Get all parameters from the model and split them into trainable and frozen sets
+    trainable_params, _ = nnx.split(nnx.state(DiTmodel, nnx.Param), is_trainable)
+
+    # Create an optimizer that only updates the trainable parameters
+    optimizer = nnx.Optimizer(DiTmodel, opt, wrt=trainable_params)
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     sd_vae = get_sd_vae().to(device)
     

@@ -188,7 +188,7 @@ class DiffusionTransformer(nnx.Module):
         self.mapper = DiTPatch(config, mapper_rng)
         self.time_MLP = TimeMLP(config, time_mlp_rng)
 
-        self.pos_embed = self._get_pos_embed()
+        self.pos_embed = nnx.Param(self._get_pos_embed())
     
     def _get_pos_embed(self):
         """
