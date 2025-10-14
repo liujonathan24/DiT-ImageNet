@@ -95,8 +95,8 @@ class DiTBlock(nnx.Module):
     def __init__(self, config: modelConfig, rng: jax.random.PRNGKey):
         self.dtype = config.dtype
         ln1_rng, ln2_rng, mha_rng, mlp_rng, cLin_rng = jax.random.split(rng, 5)
-        self.LayerNorm1 = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(ln1_rng), use_scale=False, use_bias=False, dtype=self.dtype)
-        self.LayerNorm2 = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(ln2_rng), use_scale=False, use_bias=False, dtype=self.dtype)
+        self.LayerNorm1 = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(ln1_rng), epsilon=1e-5, use_scale=False, use_bias=False, dtype=self.dtype)
+        self.LayerNorm2 = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(ln2_rng), epsilon=1e-5, use_scale=False, use_bias=False, dtype=self.dtype)
         self.MHA = MHA(config, mha_rng)
         self.MLP = MLP(config, mlp_rng) 
         self.cLinWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size * 6, rngs=nnx.Rngs(cLin_rng), kernel_init=zero_init, dtype=self.dtype)  
