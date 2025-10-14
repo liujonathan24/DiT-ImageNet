@@ -188,9 +188,9 @@ class DiffusionTransformer(nnx.Module):
         self.mapper = DiTPatch(config, mapper_rng)
         self.time_MLP = TimeMLP(config, time_mlp_rng)
 
-        self.pos_embed = self.pos_embed()
+        self.pos_embed = self._get_pos_embed()
     
-    def pos_embed(self):
+    def _get_pos_embed(self):
         position = jnp.arange(self.length)[:, jnp.newaxis]
         div_term = jnp.exp(jnp.arange(0, self.DiT_hidden_size, 2) * -(jnp.log(10000.0) / self.DiT_hidden_size))
         pe = jnp.zeros((self.length, self.DiT_hidden_size), dtype=self.dtype)
@@ -245,8 +245,8 @@ class DiffusionTransformer(nnx.Module):
 
     def __call__(self, x, timestep, y):
 
-        # func = lambda x, timestep, y: self.forward(x, timestep, y)
-        # return vmap(func, in_axes=(0, 0, 0), out_axes=0)(x, timestep, y)
+        func = lambda x, timestep, y: self.forward(x, timestep, y)
+        return vmap(func, in_axes=(0, 0, 0), out_axes=0)(x, timestep, y)
 
         print("!!! WARNING: Running without vmap for debugging. This will be slow. !!!")
         # Manually loop over the batch dimension for debugging prints

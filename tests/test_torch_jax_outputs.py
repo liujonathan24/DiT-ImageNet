@@ -12,14 +12,8 @@ from scripts.convert_weights import convert_weights
 from helpers.checkpoint import restore_checkpoint
 
 # PyTorch model and helpers
-# Note: This assumes you have the original DiT repo's `models.py` file
-# <<<<<<< Updated upstream
-# from models import DiT_models
-#=======
-## and a `download.py` file to load the checkpoint.
-from torch_dit.models import DiT_models
-#from torch_dit.download import find_model
-#>>>>>>> Stashed changes
+# Note: This assumes you have the original DiT repo's `models.py file
+from torch_dit.models import DiT_models# , unpatchify
 
 def print_comparison(pt_tensor, jax_tensor, name):
     """Compares a PyTorch and JAX tensor and prints the MAE."""
@@ -52,7 +46,7 @@ def main(args):
     state_dict = torch.load(args.pt_ckpt, map_location="cpu")
     pt_model.load_state_dict(state_dict)
     pt_model.eval()
-    pt_model.to(dtype=torch.bfloat16)
+    # pt_model.to(dtype=torch.bfloat16)
     print("PyTorch Model Loaded.")
 
     # --- Load and Convert JAX Model ---
@@ -66,6 +60,7 @@ def main(args):
     model_config = modelConfig(type='DiT-XL')
 
     # Restore the JAX model from the converted checkpoint
+    jax_model_o = DiffusionTransformer(model_config)
     jax_model, _ = restore_checkpoint(args.checkpoint_path, model_config, trainConfig(), gpu_device)
 
     # updated_jax_state = convert_weights(args.pt_ckpt, jax_model)
@@ -77,13 +72,13 @@ def main(args):
     seed = 42
     # PyTorch inputs
     pt_rng = torch.manual_seed(seed)
-    pt_z = torch.randn(1, 4, 32, 32, device=device, dtype=torch.bfloat16)
+    pt_z = torch.randn(1, 4, 32, 32, device=device, dtype=torch.float32)
     pt_t = torch.tensor([249], device=device)
     pt_y = torch.tensor([207], device=device)
 
     # JAX inputs (from the same numpy arrays)
     jax_rng = jax.random.PRNGKey(seed)
-    jax_z = jnp.array(pt_z.cpu().to(torch.float32).numpy(), dtype=jnp.bfloat16)
+    jax_z = jnp.array(pt_z.cpu().to(torch.float32).numpy(), dtype=jnp.float32)
     jax_t = jnp.array(pt_t.cpu().numpy())
     jax_y = jnp.array(pt_y.cpu().numpy())
     print("Inputs created.")
@@ -94,13 +89,21 @@ def main(args):
     # 1. Embeddings (Patch, Position, Time, Class)
     # PyTorch
     pt_x = pt_model.x_embedder(pt_z) + pt_model.pos_embed
-    pt_c = pt_model.t_embedder(pt_model.timestep_embedding(pt_t)) + pt_model.y_embedder(pt_y)
+    pt_c = pt_model.t_embedder(pt_t) + pt_model.y_embedder(pt_y, train=False)
     # JAX
     # Note: JAX model is not vmapped here, so we operate on a single batch item
     jax_x = jax_model.mapper.convert_to_stream(jax_z[0]) + jax_model.pos_embed
     jax_c = jax_model.time_MLP(jax_model.time_embed(jax_t[0])) + jax_model.y_embedder(jax_y[0])
     
     # Comparison
+    import ipdb; ipdb.set_trace()
+    print_comparison(pt_model.pos_embed, jax_model.pos_embed, "pos embed")
+    print_comparison(pt_model.x_embedder(pt_z), jax_model.mapper.convert_to_stream(jax_z[0]), "x embed")
+    
+    print_comparison(pt_model.y_embedder(pt_y, train=False), jax_model.y_embedder(jax_y[0]), "c condition")
+    print_comparison(pt_model.t_embedder(pt_t), jax_model.time_MLP(jax_model.time_embed(jax_t[0])), "time embed")
+    print()
+
     pt_x_np = print_comparison(pt_x.squeeze(0), jax_x, "Initial Embeddings (x)")
     pt_c_np = print_comparison(pt_c.squeeze(0), jax_c, "Initial Conditioning (c)")
 
@@ -122,8 +125,8 @@ def main(args):
         # Comparison
         pt_x_np = print_comparison(pt_x.squeeze(0), jax_x, f"Block {i} Output")
         # Update inputs for next iteration with the PyTorch ground truth
-        jax_x = jnp.array(pt_x_np)
-        pt_x = torch.from_numpy(pt_x_np).unsqueeze(0).to(device)
+        # jax_x = jnp.array(pt_x_np)
+        # pt_x = torch.from_numpy(pt_x_np).unsqueeze(0).to(device)
 
     # 3. Final Layer
     print("\n--- Final Layer ---")
@@ -135,9 +138,8 @@ def main(args):
 
     # 4. Unpatchify
     print("\n--- Unpatchify ---")
-    # PyTorch
-    from models import unpatchify
-    pt_final = unpatchify(pt_x, pt_z.shape[2])
+    # PyTorch 
+    pt_final = pt_model.unpatchify(pt_x)#, pt_z.shape[2])
     # JAX
     jax_final = jax_model.mapper.convert_to_patches(jax_x)
     print_comparison(pt_final.squeeze(0), jax_final, "Final Image Output")

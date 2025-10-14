@@ -45,7 +45,7 @@ class modelConfig:
             self.token_length = int((self.input_size / self.patch_size)**2)  # 16*16=256
 
         self.num_classes = 1000
-        self.dtype = jnp.bfloat16
+        self.dtype = jnp.float32
 
     def to_dict(self):
         # Return a serializable dict representation, excluding non-serializable fields

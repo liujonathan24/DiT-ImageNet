@@ -21,11 +21,11 @@ def convert_weights(pytorch_weights_path, jax_model):
     
     # Load PyTorch weights
     pt_weights = torch.load(pytorch_weights_path, map_location="cpu")
-
+    # print(pt_weights.keys())
     # Get JAX model state
     jax_state = nnx.state(jax_model)
     flat_state_with_paths, treedef = jax.tree_util.tree_flatten_with_path(jax_state)
-
+    print(treedef)
     # --- Weight Mapping ---
     weight_mapping = {
         # Class Embedder
@@ -85,10 +85,11 @@ def convert_weights(pytorch_weights_path, jax_model):
             else:
                 path_parts.append(str(k))
         path_str = ".".join(path_parts)
-
+        
         if path_str.startswith('.'): path_str = path_str[1:]
-
+        # print(path_str)
         if path_str in weight_mapping:
+            #print("======" if path_str=="pos_embed")
             pt_name, should_transpose = weight_mapping[path_str]
 
             if pt_name not in pt_weights:
@@ -99,6 +100,7 @@ def convert_weights(pytorch_weights_path, jax_model):
             value = pt_weights[pt_name].detach().cpu().numpy()
 
             if pt_name == 'pos_embed' and value.ndim == 3:
+                print("hello?")
                 value = np.squeeze(value, axis=0)
 
             if should_transpose:
