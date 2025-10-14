@@ -191,12 +191,47 @@ class DiffusionTransformer(nnx.Module):
         self.pos_embed = self._get_pos_embed()
     
     def _get_pos_embed(self):
-        position = jnp.arange(self.length)[:, jnp.newaxis]
-        div_term = jnp.exp(jnp.arange(0, self.DiT_hidden_size, 2) * -(jnp.log(10000.0) / self.DiT_hidden_size))
-        pe = jnp.zeros((self.length, self.DiT_hidden_size), dtype=self.dtype)
-        pe = pe.at[:, 0::2].set(jnp.sin(position * div_term).astype(self.dtype))
-        pe = pe.at[:, 1::2].set(jnp.cos(position * div_term).astype(self.dtype))
-        return pe
+        """
+        Build 2D sinusoidal positional embeddings.
+        """
+        embed_dim = self.DiT_hidden_size
+        grid_size = int(self.length ** 0.5)
+        
+        def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
+            assert embed_dim % 2 == 0
+            omega = jnp.arange(embed_dim // 2, dtype=jnp.float64)
+            omega /= embed_dim / 2.
+            omega = 1. / 10000**omega  # (D/2,)
+
+            pos = pos.reshape(-1)  # (M,)
+            out = jnp.einsum('m,d->md', pos, omega)  # (M, D/2), outer product
+
+            emb_sin = jnp.sin(out) # (M, D/2)
+            emb_cos = jnp.cos(out) # (M, D/2)
+
+            emb = jnp.concatenate([emb_sin, emb_cos], axis=1)  # (M, D)
+            return emb
+
+        assert embed_dim % 2 == 0
+        
+        # use half of dimensions to encode grid_h
+        emb_h = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, jnp.arange(grid_size, dtype=jnp.float32))
+        emb_w = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, jnp.arange(grid_size, dtype=jnp.float32))
+
+        # emb = jnp.concatenate([emb_h, emb_w], axis=1) # This is for 1D grid, not 2D
+        
+        grid_h = jnp.arange(grid_size, dtype=jnp.float32)
+        grid_w = jnp.arange(grid_size, dtype=jnp.float32)
+        grid = jnp.meshgrid(grid_w, grid_h)  # here w goes first
+        grid = jnp.stack(grid, axis=0)
+        grid = grid.reshape([2, 1, grid_size, grid_size])
+
+        emb_h = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[0])
+        emb_w = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[1])
+
+        pos_embed = jnp.concatenate([emb_h, emb_w], axis=1)
+
+        return pos_embed.astype(self.dtype)
 
     def time_embed(self, t, max_period=10000):
         dim = self.config.time_embed_dim
