@@ -96,7 +96,7 @@ def main(args):
     jax_c = jax_model.time_MLP(jax_model.time_embed(jax_t[0])) + jax_model.y_embedder(jax_y[0])
     
     # Comparison
-    import ipdb; ipdb.set_trace()
+    #import ipdb; ipdb.set_trace()
     print_comparison(pt_model.pos_embed, jax_model.pos_embed, "pos embed")
     print_comparison(pt_model.x_embedder(pt_z), jax_model.mapper.convert_to_stream(jax_z[0]), "x embed")
     

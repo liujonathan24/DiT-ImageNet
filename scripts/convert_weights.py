@@ -36,7 +36,7 @@ def convert_weights(pytorch_weights_path, jax_model):
         "mapper.patch_embeddings.bias..value": ("x_embedder.proj.bias", False),
 
         # Positional Embedding
-        "pos_embed.value": ("pos_embed", False),
+        "pos_embed..value": ("pos_embed", False),
 
         # Time MLP
         "time_MLP.fc1.kernel..value": ("t_embedder.mlp.0.weight", True),
