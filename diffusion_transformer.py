@@ -95,8 +95,8 @@ class DiTBlock(nnx.Module):
     def __init__(self, config: modelConfig, rng: jax.random.PRNGKey):
         self.dtype = config.dtype
         ln1_rng, ln2_rng, mha_rng, mlp_rng, cLin_rng = jax.random.split(rng, 5)
-        self.LayerNorm1 = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(ln1_rng), epsilon=1e-5, use_scale=False, use_bias=False, dtype=self.dtype)
-        self.LayerNorm2 = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(ln2_rng), epsilon=1e-5, use_scale=False, use_bias=False, dtype=self.dtype)
+        self.LayerNorm1 = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(ln1_rng), epsilon=1e-6, use_scale=False, use_bias=False, dtype=self.dtype)
+        self.LayerNorm2 = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(ln2_rng), epsilon=1e-6, use_scale=False, use_bias=False, dtype=self.dtype)
         self.MHA = MHA(config, mha_rng)
         self.MLP = MLP(config, mlp_rng) 
         self.cLinWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size * 6, rngs=nnx.Rngs(cLin_rng), kernel_init=zero_init, dtype=self.dtype)  
@@ -110,20 +110,20 @@ class DiTBlock(nnx.Module):
         tmp = (alpha1+1)*tmp + beta1
         tmp, attn = self.MHA(tmp)
         tmp = gamma1 * tmp
-        x += tmp
+        x = x + tmp
         tmp = self.LayerNorm2(x)
         tmp = (alpha2+1)*tmp + beta2
         tmp = self.MLP(tmp)
         tmp = gamma2 * tmp
-        x += tmp
+        x = x + tmp
         return x
 
 class DiTFinalLayer(nnx.Module):
     def __init__(self, config: modelConfig, rng: jax.random.PRNGKey):
         self.dtype = config.dtype
         ln_rng, linear_rng, lin_weights_rng = jax.random.split(rng, 3)
-        self.LayerNorm = nnx.LayerNorm(config.DiT_hidden_size, epsilon=1e-5, rngs=nnx.Rngs(ln_rng), use_scale=False, use_bias=False, dtype=self.dtype)
-        self.linear = nnx.Linear(config.DiT_hidden_size, config.patch_size**2 * config.output_channels, kernel_init=xavier_init, rngs=nnx.Rngs(linear_rng), dtype=self.dtype)
+        self.LayerNorm = nnx.LayerNorm(config.DiT_hidden_size, epsilon=1e-6, rngs=nnx.Rngs(ln_rng), use_scale=False, use_bias=False, dtype=self.dtype)
+        self.linear = nnx.Linear(config.DiT_hidden_size, config.patch_size**2 * config.output_channels, kernel_init=zero_init, rngs=nnx.Rngs(linear_rng), dtype=self.dtype)
         self.linWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size*2, rngs=nnx.Rngs(lin_weights_rng), kernel_init=zero_init, dtype=self.dtype)
 
     def forward(self, x, conditioning):

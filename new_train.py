@@ -26,7 +26,7 @@ from jax_dataloader.datasets import ArrayDataset
 @nnx.jit  # automatic state management for JAX transforms
 def train_step(model, optimizer, x, t, epsilon):
   def loss_fn(model):
-    y_pred = model(x, t)  
+    y_pred = model(x, t,t*0) 
     return optax.losses.squared_error(y_pred, epsilon).mean()
 
   loss, grads = nnx.value_and_grad(loss_fn)(model)

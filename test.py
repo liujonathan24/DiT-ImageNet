@@ -51,7 +51,7 @@ def main(args):
             # t = jnp.ones((trainconfig.batch_size)) * t
             # print(x_t.shape, t.shape)
             t_vec = jnp.ones((trainconfig.batch_size)) * t
-            prediction = model(x_t, t_vec)
+            prediction = model(x_t, t_vec, t_vec*0)
             modified_x_t = x_t - prediction * (1-diffusion.alphas[t-1])/jnp.sqrt(1-diffusion.alpha_bars[t-1])
 
             modified_x_t *= 1/jnp.sqrt(diffusion.alphas[t-1])
