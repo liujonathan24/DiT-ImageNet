@@ -85,18 +85,26 @@ class GaussianDiffusion:
         y_in = jnp.concatenate([y, y_null], axis=0)
 
         # Model call
-        model_output = model(x_in, t_in, y_in)
+        model_output_full = model(x_in, t_in, y_in)
 
         # CFG
-        cond_output, uncond_output = jnp.split(model_output, 2, axis=0)
+        cond_output, uncond_output = jnp.split(model_output_full, 2, axis=0)
         cfg_output = uncond_output + cfg_scale * (cond_output - uncond_output)
-        model_output, model_var_values = jnp.split(cfg_output, 2, axis=1)
 
-        # Calculate variance
-        min_log = _extract_into_tensor(self.posterior_log_variance_clipped, t, x.shape)
-        max_log = _extract_into_tensor(np.log(self.betas), t, x.shape)
-        frac = (model_var_values + 1) / 2
-        model_log_variance = frac * max_log + (1 - frac) * min_log
+        # Determine variance
+        if self.model_var_type == "learned_range":
+            # This path is for models that output 2*C channels
+            model_output, model_var_values = jnp.split(cfg_output, 2, axis=1)
+            min_log = _extract_into_tensor(self.posterior_log_variance_clipped, t, x.shape)
+            max_log = _extract_into_tensor(np.log(self.betas), t, x.shape)
+            frac = (model_var_values + 1) / 2
+            model_log_variance = frac * max_log + (1 - frac) * min_log
+        else:
+            # This path is for models that only output C channels (epsilon)
+            model_output = cfg_output
+            model_log_variance = _extract_into_tensor(
+                self.posterior_log_variance_clipped, t, x.shape
+            )
 
         # Calculate mean
         pred_xstart = self._predict_xstart_from_eps(x_t=x, t=t, eps=model_output)
