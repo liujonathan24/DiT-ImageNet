@@ -194,8 +194,8 @@ class DiffusionTransformer(nnx.Module):
         position = jnp.arange(self.length)[:, jnp.newaxis]
         div_term = jnp.exp(jnp.arange(0, self.DiT_hidden_size, 2) * -(jnp.log(10000.0) / self.DiT_hidden_size))
         pe = jnp.zeros((self.length, self.DiT_hidden_size), dtype=self.dtype)
-        pe.at[:, 0::2].set(jnp.sin(position * div_term).astype(self.dtype))
-        pe.at[:, 1::2].set(jnp.cos(position * div_term).astype(self.dtype))
+        pe = pe.at[:, 0::2].set(jnp.sin(position * div_term).astype(self.dtype))
+        pe = pe.at[:, 1::2].set(jnp.cos(position * div_term).astype(self.dtype))
         return pe
 
     def time_embed(self, t, max_period=10000):
