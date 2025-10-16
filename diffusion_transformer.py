@@ -3,6 +3,7 @@ import jax.numpy as jnp
 from jax import vmap
 from flax import nnx
 from helpers.config import modelConfig
+# TODO: check config calculates things correctly.
 
 xavier_init = nnx.initializers.xavier_uniform()
 
@@ -16,6 +17,7 @@ def print_stats_jax(tensor, name="Tensor"):
         f"min={min_val:.4f}, max={max_val:.4f}, shape={tensor.shape}, dtype={tensor.dtype}"
     )
 
+# TODO: check
 class MHA(nnx.Module):
     def __init__(self, config: modelConfig, rng: jax.random.PRNGKey):
         
@@ -33,8 +35,9 @@ class MHA(nnx.Module):
         return self.forward(x)
 
     def forward(self, x):
-        y = self.qkv_proj(x)
-        y = y.reshape(self.length, 3, self.num_heads, self.d_head)
+        print(x.shape) # N, C
+        y = self.qkv_proj(x) # N, 3*C
+        y = y.reshape(self.length, 3, self.num_heads, self.d_head) # N, 3, H, d_H
         y = jnp.transpose(y, (1, 2, 0, 3))
         q, k, v = y[0], y[1], y[2]
 
@@ -52,14 +55,14 @@ class MHA(nnx.Module):
         out = jnp.einsum('hlm,hmd->hld', attn, v)
         return out, attn
 
-
+# Done
 class MLP(nnx.Module):
     def __init__(self, config: modelConfig, rng: jax.random.PRNGKey):
         fc1_rng, fc2_rng = jax.random.split(rng)
         self.dtype = config.dtype
-        self.fc1 = nnx.Linear(config.DiT_hidden_size, config.MLP_hidden_size, kernel_init=xavier_init, rngs=nnx.Rngs(fc1_rng), dtype=self.dtype)
+        self.fc1 = nnx.Linear(config.DiT_hidden_size, config.MLP_hidden_size, kernel_init=xavier_init, rngs=nnx.Rngs(fc1_rng), dtype=self.dtype, use_bias=True)
         self.act = lambda t: nnx.gelu(t, approximate=True)
-        self.fc2 = nnx.Linear(config.MLP_hidden_size, config.DiT_hidden_size, kernel_init=xavier_init, rngs=nnx.Rngs(fc2_rng), dtype=self.dtype)
+        self.fc2 = nnx.Linear(config.MLP_hidden_size, config.DiT_hidden_size, kernel_init=xavier_init, rngs=nnx.Rngs(fc2_rng), dtype=self.dtype, use_bias=True)
     
     def __call__(self, x):
         return self.forward(x)
@@ -70,7 +73,12 @@ class MLP(nnx.Module):
         x = self.fc2(x)
         return x
 
+# Done
 class TimeMLP(nnx.Module):
+    # TODO: init as
+    # nn.init.normal_(self.t_embedder.mlp[0].weight, std=0.02)
+    # nn.init.normal_(self.t_embedder.mlp[2].weight, std=0.02)
+
     def __init__(self, config: modelConfig, rng: jax.random.PRNGKey):
         fc1_rng, fc2_rng = jax.random.split(rng)
         self.dtype = config.dtype
@@ -87,6 +95,20 @@ class TimeMLP(nnx.Module):
     def __call__(self, x):
         return self.forward(x)
 
+class LabelEmbed(nnx.Module):
+    def __init__(self, config, rng):
+        self.dropout_prob = config.dropout_prob # TODO: add dropout to config
+        self.num_classes = config.num_classes + self.dropout_prob > 0
+        self.rng = rng
+        self.embedder = nnx.Embed(num_embeddings=self.num_classes, features=config.DiT_hidden_size, rngs=nnx.Rngs(rng), dtype=config.dtype)
+    
+    def __call__(self, label, train=True):
+        # dropout
+        if train:
+            drop_id = jax.random.uniform(rng, (label.shape[0],)) < self.dropout_prob
+            label = jnp.where(drop_id, self.num_classes, label)
+        return self.embedder(label)
+
 def zero_init(key, shape, dtype):
     value = jnp.zeros(shape, dtype=dtype)
     return value
@@ -95,6 +117,7 @@ class DiTBlock(nnx.Module):
     def __init__(self, config: modelConfig, rng: jax.random.PRNGKey):
         self.dtype = config.dtype
         ln1_rng, ln2_rng, mha_rng, mlp_rng, cLin_rng = jax.random.split(rng, 5)
+
         self.LayerNorm1 = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(ln1_rng), epsilon=1e-6, use_scale=False, use_bias=False, dtype=self.dtype)
         self.LayerNorm2 = nnx.LayerNorm(config.DiT_hidden_size, rngs=nnx.Rngs(ln2_rng), epsilon=1e-6, use_scale=False, use_bias=False, dtype=self.dtype)
         self.MHA = MHA(config, mha_rng)
@@ -111,13 +134,14 @@ class DiTBlock(nnx.Module):
         tmp, attn = self.MHA(tmp)
         tmp = gamma1 * tmp
         x = x + tmp
+        
         tmp = self.LayerNorm2(x)
         tmp = (alpha2+1)*tmp + beta2
         tmp = self.MLP(tmp)
         tmp = gamma2 * tmp
         x = x + tmp
         return x
-
+# Checked
 class DiTFinalLayer(nnx.Module):
     def __init__(self, config: modelConfig, rng: jax.random.PRNGKey):
         self.dtype = config.dtype
@@ -137,19 +161,24 @@ class DiTFinalLayer(nnx.Module):
         return self.forward(x, conditioning)
 
 class DiTPatch(nnx.Module):
+    # TODO: initialize as: 
+    # # Initialize patch_embed like nn.Linear (instead of nn.Conv2d):
+        # w = self.x_embedder.proj.weight.data
+        # nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
+        # nn.init.constant_(self.x_embedder.proj.bias, 0)
     def __init__(self, config: modelConfig, rng: jax.random.PRNGKey):
         self.output_dim = config.output_dim
-        self.patch_size = config.patch_size
+        self.patch_size = (config.patch_size, config.patch_size)
         self.output_channels = config.output_channels
         self.token_length = config.token_length
         self.DiT_hidden_size = config.DiT_hidden_size
         self.dtype = config.dtype
         
         self.patch_embeddings = nnx.Conv(
-            in_features=config.image_channels,         
+            in_features=config.image_channels, # TODO: rename to in_channels         
             out_features=config.DiT_hidden_size,      
-            kernel_size=(config.patch_size, config.patch_size),
-            strides=(config.patch_size, config.patch_size),
+            kernel_size=self.patch_size,
+            strides=self.patch_size,
             padding='VALID',                           
             rngs=nnx.Rngs(rng),
             dtype=self.dtype
@@ -162,13 +191,15 @@ class DiTPatch(nnx.Module):
         return imgs
     
     def convert_to_stream(self, input):
+        # Input = [4, 32, 32]
         input = jnp.einsum('chw->hwc', input)
-        input = self.patch_embeddings(input)
-        input = input.reshape(self.token_length, self.DiT_hidden_size)
+        input = self.patch_embeddings(input) # 32/patch, 32/patch, Hidden
+        input = input.reshape(self.token_length, self.DiT_hidden_size) # L, Hidden
         return input
 
 class DiffusionTransformer(nnx.Module):
     """Diffusion Transformer"""
+    # Done
     def __init__(self, config: modelConfig):
         self.config = config
         self.length = config.token_length 
@@ -179,16 +210,19 @@ class DiffusionTransformer(nnx.Module):
         rng, layer_rng, final_rng, mapper_rng, time_mlp_rng, y_embed_rng = jax.random.split(config.rngs.params(), 6)
         layer_rngs = jax.random.split(layer_rng, self.n_layers)
 
-        self.y_embedder = nnx.Embed(num_embeddings=config.num_classes + 1, features=config.DiT_hidden_size, rngs=nnx.Rngs(y_embed_rng), dtype=self.dtype)
+        # Embedders:
+        self.mapper = DiTPatch(config, mapper_rng)
+        self.pos_embed = nnx.Param(self._get_pos_embed()) # TODO: make sure this guy is not trainable
 
+        self.time_MLP = TimeMLP(config, time_mlp_rng)
+        self.y_embedder = LabelEmbed(config, y_embed_rng)
+
+        # DiT Blocks
         self.layers = nnx.List([
                  DiTBlock(config, layer_rngs[i]) for i in range(self.n_layers)
                  ])
+        # Final layer
         self.final_layer = DiTFinalLayer(config, final_rng)
-        self.mapper = DiTPatch(config, mapper_rng)
-        self.time_MLP = TimeMLP(config, time_mlp_rng)
-
-        self.pos_embed = nnx.Param(self._get_pos_embed())
     
     def _get_pos_embed(self):
         """
@@ -233,8 +267,9 @@ class DiffusionTransformer(nnx.Module):
 
         return pos_embed.astype(self.dtype)
 
+    # Done
     def time_embed(self, t, max_period=10000):
-        dim = self.config.time_embed_dim
+        dim = self.config.time_embed_dim # TODO: check that this is 256
         half = dim // 2
         freqs = jnp.exp(
             -jnp.log(max_period) * jnp.arange(start=0, stop=half, dtype=jnp.float32) / half
@@ -245,6 +280,9 @@ class DiffusionTransformer(nnx.Module):
             embedding = jnp.concatenate([embedding, jnp.zeros(1)], axis=-1)
         return embedding.astype(self.dtype)
 
+    # Done
+    # Is actually pure forward(), 
+    # TODO: probably wnat to write a forward_with_cfg()
     def forward(self, x, timestep, y):
         #print("--- Start of Forward Pass ---")
         #print_stats_jax(x, name="Input x")
@@ -302,10 +340,12 @@ if __name__=="__main__":
   rng = jax.random.PRNGKey(0)
 
   batch = 8
-  test_input = jnp.ones((batch, 4, 32, 32), dtype=config.dtype)
+  test_input = jax.random.uniform(rng, shape=(batch, 8, 32, 32), dtype=config.dtype)
   test_timesteps = jnp.ones(batch)
-  test_labels = jnp.ones(batch, dtype=jnp.int32)
+  test_labels = jnp.ones(batch, dtype=jnp.int32) * 0
   
   test_DiT = DiffusionTransformer(config)
   x = test_DiT(test_input, test_timesteps, test_labels)
+  print(jnp.mean(x-test_input))
+  print(x, test_input)
   print(x.shape)

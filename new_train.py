@@ -24,15 +24,17 @@ import logging
 from jax_dataloader.datasets import ArrayDataset
 
 @nnx.jit  # automatic state management for JAX transforms
-def train_step(model, optimizer, x, t, epsilon):
-  def loss_fn(model):
-    y_pred = model(x, t,t*0) 
-    return optax.losses.squared_error(y_pred, epsilon).mean()
+def train_step(model, optimizer, x, t, epsilon, ema_step=0.9999):
+    def loss_fn(model):
+        y_pred = model(x, t,t*0) # TODO: fix this, should not be 0 for everything.
+        return optax.losses.squared_error(y_pred, epsilon).mean()
 
-  loss, grads = nnx.value_and_grad(loss_fn)(model)
-  optimizer.update(model, grads)  # in-place updates
+    loss, grads = nnx.value_and_grad(loss_fn)(model)
+    optimizer.update(model, grads)  # in-place updates
 
-  return loss
+    # TODO: parameter EMA
+
+    return loss
 
 def main(args):
     start_time = time.time()
@@ -51,7 +53,7 @@ def main(args):
     modelconfig = modelConfig()
     trainconfig.batch_size = 256 #TODO: remove
     trainconfig.log_frequency = 51  # 635
-    trainconfig.ckpt_frequency = 100 # 10
+    trainconfig.ckpt_frequency = 50 # 10
     trainconfig.epochs = 135000 # 1500
 
     #diffusion = Diffusion(trainconfig.linear_variance_min, trainconfig.linear_variance_max, trainconfig.tmax)
