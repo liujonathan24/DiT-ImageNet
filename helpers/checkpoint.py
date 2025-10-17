@@ -21,10 +21,11 @@ def save_checkpoint(mngr, model, optimizer, epoch, trainconfig, args):
     mngr.wait_until_finished()
 
 def _safe_zeros_like(x):
-    """Creates a zero-filled array like x, but safely handles PRNGKeys."""
-    if hasattr(x, 'dtype') and x.dtype == jax.dtypes.prng_key:
-        return x # Pass PRNGKey through as-is
-    return np.zeros_like(x)
+    """Creates a zero-filled array like x, but safely handles non-array types like PRNGKeys."""
+    try:
+        return np.zeros_like(x)
+    except TypeError:
+        return x
 
 def restore_checkpoint(model_path, modelconfig: modelConfig, trainconfig: trainConfig, gpu_device):
     DiTmodel = DiffusionTransformer(modelconfig)

@@ -97,16 +97,20 @@ class TimeMLP(nnx.Module):
 
 class LabelEmbed(nnx.Module):
     def __init__(self, config, rng):
-        self.dropout_prob = config.dropout_prob # TODO: add dropout to config
-        self.num_classes = config.num_classes + self.dropout_prob > 0
-        self.rng = rng
-        self.embedder = nnx.Embed(num_embeddings=self.num_classes, features=config.DiT_hidden_size, rngs=nnx.Rngs(rng), dtype=config.dtype)
+        self.dropout_prob = config.dropout_prob
+        self.num_classes = config.num_classes
+        self.embedder = nnx.Embed(num_embeddings=config.num_classes + 1, features=config.DiT_hidden_size, rngs=nnx.Rngs(rng), dtype=config.dtype)
     
-    def __call__(self, label, train=True):
-        # dropout
-        if train:
-            drop_id = jax.random.uniform(self.rng) < self.dropout_prob
-            label = jnp.where(drop_id, self.num_classes, label)
+    def __call__(self, label, train: bool, *, rngs: dict | None = None):
+        if train and self.dropout_prob > 0:
+            assert rngs is not None, "RNGs must be provided for training with dropout."
+            dropout_key = rngs['dropout']
+            # Decide whether to drop for each item in the batch
+            drop_mask = jax.random.uniform(dropout_key, shape=label.shape) < self.dropout_prob
+            # The unconditional class label is num_classes
+            unconditional_label = self.num_classes
+            label = jnp.where(drop_mask, unconditional_label, label)
+        
         return self.embedder(label)
 
 def zero_init(key, shape, dtype):
@@ -281,36 +285,21 @@ class DiffusionTransformer(nnx.Module):
             embedding = jnp.concatenate([embedding, jnp.zeros(1)], axis=-1)
         return embedding.astype(self.dtype)
 
-    # Done
-    # Is actually pure forward(), 
-    # TODO: probably wnat to write a forward_with_cfg()
-    def forward(self, x, timestep, y):
-        #print("--- Start of Forward Pass ---")
-        #print_stats_jax(x, name="Input x")
-        
+    def forward(self, x, timestep, y, train: bool, *, rngs: dict | None = None):
         x = self.mapper.convert_to_stream(x)
-        #print_stats_jax(x, name="After convert_to_stream")
-        
         x = x + self.pos_embed
-        #print_stats_jax(x, name="After pos_embed")
         
         time_embedding = self.time_MLP(self.time_embed(timestep))
-        # The vmap gives us a scalar y, but nnx.Embed expects an array.
+        
         y_array = jnp.array([y])
-        class_embedding = self.y_embedder(y_array).squeeze(axis=0)
+        class_embedding = self.y_embedder(y_array, train=train, rngs=rngs).squeeze(axis=0)
         conditioning = time_embedding + class_embedding
-        #print_stats_jax(conditioning, name="Combined Conditioning")
 
         for i, layer in enumerate(self.layers):
             x = layer.forward(x, conditioning)
-            #print_stats_jax(x, name=f"After DiT Block {i}")
             
         x = self.final_layer(x, conditioning)
-        #print_stats_jax(x, name="After final_layer")
-        
         x = self.mapper.convert_to_patches(x)
-        #print_stats_jax(x, name="Final Output")
-        #print("--- End of Forward Pass ---")
         return x
             
     def get_weights(self):
@@ -319,9 +308,9 @@ class DiffusionTransformer(nnx.Module):
     def set_weights(self, weights):
         nnx.update(self, weights)
 
-    def __call__(self, x, timestep, y):
+    def __call__(self, x, timestep, y, train: bool, *, rngs: dict | None = None):
 
-        func = lambda x, timestep, y: self.forward(x, timestep, y)
+        func = lambda x, timestep, y: self.forward(x, timestep, y, train=train, rngs=rngs)
         return vmap(func, in_axes=(0, 0, 0), out_axes=0)(x, timestep, y)
 
         print("!!! WARNING: Running without vmap for debugging. This will be slow. !!!")

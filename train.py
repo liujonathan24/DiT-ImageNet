@@ -18,14 +18,13 @@ from glob import glob
 from helpers.checkpoint import save_checkpoint, restore_checkpoint
 from helpers.logging_utils import setup_logging
 import logging
-from jax_dataloader import DataLoader
 from helpers.save_latent_distr import create_latent_dataloader
 
 @nnx.jit
-def train_step(model, ema_model, optimizer, x, t, labels, epsilon, ema_decay=0.9999):
+def train_step(model, ema_model, optimizer, x, t, labels, epsilon, *, rngs, ema_decay=0.9999):
     """A single training step, JIT-compiled for performance."""
     def loss_fn(model):
-        y_pred = model(x, t, labels)
+        y_pred = model(x, t, labels, train=True, rngs=rngs)
         return optax.losses.squared_error(y_pred, epsilon).mean()
 
     # Get loss and gradients
@@ -123,8 +122,8 @@ def main(args):
             # --- Main Training Logic ---
             iter_key, random_key = jax.random.split(random_key)
             
-            # Sample from the latent distribution
-            sampling_noise_key, diffusion_noise_key, t_key = jax.random.split(iter_key, 3)
+            # 1. Sample from the latent distribution
+            sampling_noise_key, diffusion_noise_key, t_key, dropout_key = jax.random.split(iter_key, 4)
             epsilon_for_sampling = jax.random.normal(key=sampling_noise_key, shape=mean.shape)
             batch_latents = mean + std * epsilon_for_sampling
 
@@ -137,7 +136,7 @@ def main(args):
             noisy_batch = batch_latents * jnp.sqrt(alpha_bar_t) + jnp.sqrt(1 - alpha_bar_t) * epsilon_for_diffusion
 
             # 4. Run the training step
-            loss = train_step(DiTmodel, ema_model, optimizer, noisy_batch, t, batch_labels, epsilon_for_diffusion)
+            loss = train_step(DiTmodel, ema_model, optimizer, noisy_batch, t, batch_labels, epsilon_for_diffusion, rngs={'dropout': dropout_key})
 
             running_loss += loss.item()
 

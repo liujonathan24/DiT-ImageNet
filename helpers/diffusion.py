@@ -88,7 +88,7 @@ class GaussianDiffusion:
         y_in = jnp.concatenate([y, y_null], axis=0)
 
         # Model call
-        model_output_full = model(x_in, t_in, y_in)
+        model_output_full = model(x_in, t_in, y_in, train=False)
 
         # CFG
         cond_output, uncond_output = jnp.split(model_output_full, 2, axis=0)
