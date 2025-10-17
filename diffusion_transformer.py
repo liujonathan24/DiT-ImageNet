@@ -35,7 +35,7 @@ class MHA(nnx.Module):
         return self.forward(x)
 
     def forward(self, x):
-        print(x.shape) # N, C
+        # print(x.shape) # N, C
         y = self.qkv_proj(x) # N, 3*C
         y = y.reshape(self.length, 3, self.num_heads, self.d_head) # N, 3, H, d_H
         y = jnp.transpose(y, (1, 2, 0, 3))
@@ -149,11 +149,11 @@ class DiTBlock(nnx.Module):
 class DiTFinalLayer(nnx.Module):
     def __init__(self, config: modelConfig, rng: jax.random.PRNGKey):
         self.dtype = config.dtype
-        multiplier = 2 if config.learn_sigma else 1
+        # multiplier = 2 if config.learn_sigma else 1
         ln_rng, linear_rng, lin_weights_rng = jax.random.split(rng, 3)
         self.LayerNorm = nnx.LayerNorm(config.DiT_hidden_size, epsilon=1e-6, rngs=nnx.Rngs(ln_rng), use_scale=False, use_bias=False, dtype=self.dtype)
         self.linear = nnx.Linear(config.DiT_hidden_size, config.patch_size**2 * config.output_channels, kernel_init=zero_init, rngs=nnx.Rngs(linear_rng), dtype=self.dtype)
-        self.linWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size*multiplier, rngs=nnx.Rngs(lin_weights_rng), kernel_init=zero_init, dtype=self.dtype)
+        self.linWeights = nnx.Linear(config.DiT_hidden_size, config.DiT_hidden_size*2, rngs=nnx.Rngs(lin_weights_rng), kernel_init=zero_init, dtype=self.dtype)
 
     def forward(self, x, conditioning):
         x = self.LayerNorm(x)
@@ -190,9 +190,9 @@ class DiTPatch(nnx.Module):
         )
 
     def convert_to_patches(self, input):
-        x = input.reshape((self.output_dim, self.output_dim, self.patch_size, self.patch_size, self.output_channels))
+        x = input.reshape((self.output_dim, self.output_dim, self.patch_size[0], self.patch_size[1], self.output_channels))
         x = jnp.einsum('hwpqc->chpwq', x)
-        imgs = x.reshape((self.output_channels, self.output_dim*self.patch_size, self.output_dim*self.patch_size))
+        imgs = x.reshape((self.output_channels, self.output_dim*self.patch_size[0], self.output_dim*self.patch_size[1]))
         return imgs
     
     def convert_to_stream(self, input):

@@ -58,7 +58,7 @@ def main(args):
     # Load configurations
     trainconfig = trainConfig()
     modelconfig = modelConfig()
-    trainconfig.batch_size = 2048 
+    trainconfig.batch_size = 768 
     trainconfig.log_frequency = 51
     trainconfig.ckpt_frequency = 50
     trainconfig.epochs = 135000
@@ -69,6 +69,7 @@ def main(args):
     if args.resume:
         experiment_path = args.resume
         models_dir = os.path.abspath(os.path.join(experiment_path, "models"))
+        ema_model_dir = os.path.abspath(os.path.join(experiment_path, "ema_model"))
         # Restore the EMA model from its dedicated directory
         ema_model, extra_params = restore_checkpoint(ema_model_dir, modelconfig, trainconfig, gpu_device)
         start_epoch = extra_params['epoch'] + 1
