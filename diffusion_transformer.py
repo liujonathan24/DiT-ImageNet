@@ -105,7 +105,7 @@ class LabelEmbed(nnx.Module):
     def __call__(self, label, train=True):
         # dropout
         if train:
-            drop_id = jax.random.uniform(rng, (label.shape[0],)) < self.dropout_prob
+            drop_id = jax.random.uniform(self.rng) < self.dropout_prob
             label = jnp.where(drop_id, self.num_classes, label)
         return self.embedder(label)
 
@@ -295,7 +295,9 @@ class DiffusionTransformer(nnx.Module):
         #print_stats_jax(x, name="After pos_embed")
         
         time_embedding = self.time_MLP(self.time_embed(timestep))
-        class_embedding = self.y_embedder(y)
+        # The vmap gives us a scalar y, but nnx.Embed expects an array.
+        y_array = jnp.array([y])
+        class_embedding = self.y_embedder(y_array).squeeze(axis=0)
         conditioning = time_embedding + class_embedding
         #print_stats_jax(conditioning, name="Combined Conditioning")
 
