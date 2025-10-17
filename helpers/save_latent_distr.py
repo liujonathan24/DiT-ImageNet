@@ -1,4 +1,4 @@
-from torch.utils.data import DataLoader
+from jax_dataloader import DataLoader
 from helpers.config import trainConfig
 from tqdm import tqdm
 import os
