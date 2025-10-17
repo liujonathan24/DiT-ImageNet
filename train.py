@@ -141,10 +141,9 @@ def main(args):
 
             running_loss += loss.item()
 
-            if (i + 1) % trainconfig.log_frequency == 0:
-                avg_loss = running_loss / trainconfig.log_frequency
-                logging.info(f"Epoch {epoch} | Step {i+1} | Loss: {avg_loss:.4f}")
-                running_loss = 0.0
+        # Log the average loss for the entire epoch
+        epoch_avg_loss = running_loss / len(train_dataloader)
+        logging.info(f"Epoch {epoch} Average Loss: {epoch_avg_loss:.4f}")
                 
         epoch_time = time.time() - epoch_start_time
         logging.info(f"Epoch {epoch} finished in {epoch_time:.2f} seconds")
