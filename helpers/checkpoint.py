@@ -20,24 +20,24 @@ def save_checkpoint(mngr, model, optimizer, epoch, trainconfig, args):
     )
     mngr.wait_until_finished()
 
+def _safe_zeros_like(x):
+    """Creates a zero-filled array like x, but safely handles PRNGKeys."""
+    if hasattr(x, 'dtype') and x.dtype == jax.dtypes.prng_key:
+        return x # Pass PRNGKey through as-is
+    return np.zeros_like(x)
+
 def restore_checkpoint(model_path, modelconfig: modelConfig, trainconfig: trainConfig, gpu_device):
     DiTmodel = DiffusionTransformer(modelconfig)
 
-    #print("--- Architecture of model being restored ---")
-    #print(nnx.state(DiTmodel))
-    #print("------------------------------------------")
-
     status = nnx.state(DiTmodel)
-    train_state = jax.tree_util.tree_map(np.zeros_like, status)
+    # Use the safe zeros_like to handle PRNGKeys in the state
+    train_state = jax.tree_util.tree_map(_safe_zeros_like, status)
+    
     create_sharded_array = lambda x: jax.device_put(x, gpu_device)
     train_state = jax.tree_util.tree_map(create_sharded_array, train_state)
     abstract_train_state = jax.tree_util.tree_map(
         ocp.utils.to_shape_dtype_struct, train_state
     )
-
-    #print("--- Abstract Target Architecture (from Orbax's perspective) ---")
-    #print(abstract_train_state)
-    #print("-------------------------------------------------------------")
 
     path = os.path.abspath(model_path)
     options = ocp.CheckpointManagerOptions(max_to_keep=3, save_interval_steps=2)

@@ -234,7 +234,7 @@ class DiffusionTransformer(nnx.Module):
         
         def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
             assert embed_dim % 2 == 0
-            omega = jnp.arange(embed_dim // 2, dtype=jnp.float64)
+            omega = jnp.arange(embed_dim // 2, dtype=jnp.float32)
             omega /= embed_dim / 2.
             omega = 1. / 10000**omega  # (D/2,)
 
