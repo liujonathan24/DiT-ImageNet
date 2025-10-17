@@ -40,7 +40,7 @@ def main():
     # Hyperparameters for sampling test
     N_samples_per_image = 4  # Number of samples to draw from each distribution
     M_images_to_test = 2     # Number of images from the batch to test
-    test_restore = True
+    test_restore = False # True
 
     for source in ["train", "valid"]:
         latent_info = []
@@ -59,7 +59,7 @@ def main():
                 # Interleave mean and std along the channel dimension
                 B, C, H, W = mean.shape
                 info = torch.stack((mean, std), dim=1) #.view(B, C * 2, H, W)
-                print(f"Shapes of distributions (mean, std, interleaved): {mean.shape, std.shape, info.shape}")
+                # print(f"Shapes of distributions (mean, std, interleaved): {mean.shape, std.shape, info.shape}")
                 
             latent_info.append(info.cpu().numpy())
 
@@ -116,7 +116,7 @@ def main():
 
         output_latents = np.concatenate(latent_info, axis=0)
         print(f"Shape of entire latent distribution: {output_latents.shape}")
-        np.save(f"data/latent_{source}_distr.npy", output_latents)
+        np.save(f"data/latent_distribution/latent_{source}_distr.npy", output_latents)
 
 if __name__ == "__main__":
     main()
