@@ -47,6 +47,7 @@ class modelConfig:
 
         self.num_classes = 1000
         self.dtype = jnp.float32
+        self.learn_sigma = False
 
     def to_dict(self):
         # Return a serializable dict representation, excluding non-serializable fields
