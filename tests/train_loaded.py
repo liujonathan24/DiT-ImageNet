@@ -39,7 +39,7 @@ def train_step(model, ema_model, optimizer, x, t, labels, epsilon, *, rngs, ema_
     """A single training step, JIT-compiled for performance."""
     def loss_fn(model):
         y_pred = model(x, t, labels, train=True, rngs=rngs)
-        return optax.losses.squared_error(y_pred, epsilon).mean()
+        return optax.losses.squared_error(y_pred[:,:4,:,:], epsilon).mean()
 
     # Get loss and gradients
     loss, grads = nnx.value_and_grad(loss_fn)(model)
@@ -72,9 +72,9 @@ def main(args):
     # Load configurations
     trainconfig = trainConfig()
     modelconfig = modelConfig()
-    trainconfig.batch_size = 768 
+    trainconfig.batch_size = 256 
     trainconfig.log_frequency = 51
-    trainconfig.ckpt_frequency = 50
+    trainconfig.ckpt_frequency = 1
     trainconfig.epochs = 135000
 
     diffusion = create_diffusion(trainconfig.tmax)
@@ -82,7 +82,7 @@ def main(args):
     # Load DiT Model and create EMA model
     
     os.makedirs('pretrained_results', exist_ok=True)
-    experiment_number = len(glob(f"pretraine_results/*"))
+    experiment_number = len(glob(f"pretrained_results/*"))
     experiment_path = os.path.join('pretrained_results', f"experiment-v{experiment_number}")
     models_dir = os.path.abspath(os.path.join(experiment_path, "models"))
     ema_model_dir = os.path.abspath(os.path.join(experiment_path, "ema_model"))
@@ -92,8 +92,8 @@ def main(args):
     # --- Load and Convert JAX Model ---
     print("\n--- Loading and Converting JAX Model ---")
     model_config = modelConfig(type='DiT-XL')
-    DiTmodel, _ = restore_checkpoint("/scratch/network/jl0796/DiT-ImageNet/pretrained_models/DiT-XL-2-256x256_pretrained.pt", model_config, trainConfig(), gpu_device)
-    ema_model, _ = restore_checkpoint("/scratch/network/jl0796/DiT-ImageNet/pretrained_models/DiT-XL-2-256x256_pretrained.pt", model_config, trainConfig(), gpu_device)
+    DiTmodel, _ = restore_checkpoint("/scratch/network/jl0796/DiT-ImageNet/pretrained", model_config, trainConfig(), gpu_device)
+    ema_model, _ = restore_checkpoint("/scratch/network/jl0796/DiT-ImageNet/pretrained", model_config, trainConfig(), gpu_device)
 
     # DiTmodel = DiffusionTransformer(modelconfig)
     # ema_model = DiffusionTransformer(modelconfig)
