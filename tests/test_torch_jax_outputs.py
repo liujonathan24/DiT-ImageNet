@@ -61,10 +61,11 @@ def main(args):
 
     # Restore the JAX model from the converted checkpoint
     jax_model_o = DiffusionTransformer(model_config)
+    #jax_model = DiffusionTransformer(model_config)
     jax_model, _ = restore_checkpoint(args.checkpoint_path, model_config, trainConfig(), gpu_device)
 
-    # updated_jax_state = convert_weights(args.pt_ckpt, jax_model)
-    # nnx.update(jax_model, updated_jax_state)
+    #updated_jax_state = convert_weights(args.pt_ckpt, jax_model)
+    #nnx.update(jax_model, updated_jax_state)
     print("JAX Model Loaded and Weights Converted.")
 
     # --- Create Identical Inputs ---
@@ -93,14 +94,14 @@ def main(args):
     # JAX
     # Note: JAX model is not vmapped here, so we operate on a single batch item
     jax_x = jax_model.mapper.convert_to_stream(jax_z[0]) + jax_model.pos_embed
-    jax_c = jax_model.time_MLP(jax_model.time_embed(jax_t[0])) + jax_model.y_embedder(jax_y[0])
+    jax_c = jax_model.time_MLP(jax_model.time_embed(jax_t[0])) + jax_model.y_embedder(jax_y[0],train=False)
     
     # Comparison
-    import ipdb; ipdb.set_trace()
+    #import ipdb; ipdb.set_trace()
     print_comparison(pt_model.pos_embed, jax_model.pos_embed, "pos embed")
     print_comparison(pt_model.x_embedder(pt_z), jax_model.mapper.convert_to_stream(jax_z[0]), "x embed")
     
-    print_comparison(pt_model.y_embedder(pt_y, train=False), jax_model.y_embedder(jax_y[0]), "c condition")
+    print_comparison(pt_model.y_embedder(pt_y, train=False), jax_model.y_embedder(jax_y[0], train=False), "c condition")
     print_comparison(pt_model.t_embedder(pt_t), jax_model.time_MLP(jax_model.time_embed(jax_t[0])), "time embed")
     print()
 

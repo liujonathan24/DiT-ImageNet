@@ -79,11 +79,11 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run diffusion inference with a trained DiT model.")
-    parser.add_argument("--checkpoint_path", type=str, default="/scratch/network/jl0796/DiT-ImageNet/pretrained", required=True, help="Path to the directory containing the JAX model checkpoint.")
+    parser.add_argument("--checkpoint_path", type=str, default="/scratch/network/jl0796/DiT-ImageNet/pretrained", help="Path to the directory containing the pretrained pytorch model checkpoint.")
     parser.add_argument("--steps", type=int, default=250, help="Number of diffusion steps.")
     parser.add_argument("--output_path", type=str, default="generated_image.png", help="Path to save the generated image(s).")
     parser.add_argument("--seed", type=int, default=0, help="Random seed for noise generation.")
-    parser.add_argument("--cfg_scale", type=float, default=4.0, help="Scale for classifier-free guidance.")
+    parser.add_argument("--cfg_scale", type=float, default=7.0, help="Scale for classifier-free guidance.")
     parser.add_argument("--class_labels", type=str, default="207", help="Comma-separated list of ImageNet class labels to generate.")
     args = parser.parse_args()
     main(args)

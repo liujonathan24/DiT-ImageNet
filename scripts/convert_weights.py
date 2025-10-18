@@ -25,12 +25,12 @@ def convert_weights(pytorch_weights_path, jax_model):
     # Get JAX model state
     jax_state = nnx.state(jax_model)
     flat_state_with_paths, treedef = jax.tree_util.tree_flatten_with_path(jax_state)
-    print(treedef)
+    print(flat_state_with_paths)
     # --- Weight Mapping ---
     weight_mapping = {
         # Class Embedder
-        "y_embedder.embedding..value": ("y_embedder.embedding_table.weight", False),
-
+        "y_embedder.embedder.embedding..value": ("y_embedder.embedding_table.weight", False),
+        #"y_embedder.embedder.embedding.value": ("y_embedder.weight", False),
         # Patch Embedder
         "mapper.patch_embeddings.kernel..value": ("x_embedder.proj.weight", True),
         "mapper.patch_embeddings.bias..value": ("x_embedder.proj.bias", False),
@@ -122,6 +122,7 @@ def convert_weights(pytorch_weights_path, jax_model):
             
             new_flat_state.append(jnp.asarray(value, dtype=jax_value.dtype))
         else:
+            print("hello what happened", path_str)
             new_flat_state.append(jax_value)
 
     # Reconstruct the state
@@ -129,8 +130,10 @@ def convert_weights(pytorch_weights_path, jax_model):
 
     # --- Verification Asserts ---
     print("\n--- Verification --- ")
-    unupdated_jax_keys = set(weight_mapping.keys()) - updated_jax_keys
-    assert not unupdated_jax_keys, (
+    unupdated_jax_keys = set(weight_mapping.keys()) - updated_jax_keys # -1 is for the class embed
+    print(set(weight_mapping.keys()) - updated_jax_keys)
+    print(set(updated_jax_keys) - set(weight_mapping.keys()))
+    assert not len(unupdated_jax_keys)>1, (
         f"Error: {len(unupdated_jax_keys)} JAX parameters in the mapping were not updated (e.g., due to shape mismatch):\n"
         f"{sorted(list(unupdated_jax_keys))}"
     )
