@@ -13,16 +13,10 @@ torch.backends.cudnn.allow_tf32 = True
 from torchvision.utils import save_image
 from diffusion import create_diffusion
 from diffusers.models import AutoencoderKL
-from download import find_model
-from models import DiT_models
 import argparse
 
 import jax 
-import jax.numpy as jnp
-import numpy as np
 import argparse
-import os
-from PIL import Image
 import torch
 
 from helpers.config import modelConfig, trainConfig
@@ -37,10 +31,10 @@ def main(args):
     torch.set_grad_enabled(False)
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    if args.ckpt is None:
-        assert args.model == "DiT-XL/2", "Only DiT-XL/2 models are available for auto-download."
-        assert args.image_size in [256]
-        assert args.num_classes == 1000
+    # if args.ckpt is None:
+    #     assert args.model == "DiT-XL/2", "Only DiT-XL/2 models are available for auto-download."
+    #     assert args.image_size in [256]
+    #     assert args.num_classes == 1000
 
     # Load model:
     latent_size = args.image_size // 8
@@ -59,7 +53,9 @@ def main(args):
     print(f"Model restored from {args.checkpoint_path}")
 
     diffusion = create_diffusion(str(args.num_sampling_steps))
-    vae = AutoencoderKL.from_pretrained(f"stabilityai/sd-vae-ft-{args.vae}").to(device)
+    vae = get_sd_vae()
+    vae.to('cuda')
+    vae.eval()
 
     # Labels to condition the model with (feel free to change):
     class_labels = [207, 360, 387, 974, 88, 979, 417, 279]
@@ -91,8 +87,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint_path", type=str, default="/scratch/network/jl0796/DiT-ImageNet/pretrained", help="Path to the directory containing the pretrained pytorch model checkpoint.")
-    parser.add_argument("--model", type=str, choices=list(DiT_models.keys()), default="DiT-XL/2")
-    parser.add_argument("--vae", type=str, choices=["ema", "mse"], default="mse")
+    # parser.add_argument("--vae", type=str, choices=["ema", "mse"], default="mse")
     parser.add_argument("--image-size", type=int, choices=[256, 512], default=256)
     parser.add_argument("--num-classes", type=int, default=1000)
     parser.add_argument("--cfg-scale", type=float, default=4.0)
