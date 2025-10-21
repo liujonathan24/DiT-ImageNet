@@ -17,6 +17,19 @@ from download import find_model
 from models import DiT_models
 import argparse
 
+import jax 
+import jax.numpy as jnp
+import numpy as np
+import argparse
+import os
+from PIL import Image
+import torch
+
+from helpers.config import modelConfig, trainConfig
+from helpers.checkpoint import restore_checkpoint
+from helpers.create_diffusion import create_diffusion
+from vae.import_sd_vae_torch import get_sd_vae
+
 
 def main(args):
     # Setup PyTorch:
@@ -26,20 +39,25 @@ def main(args):
 
     if args.ckpt is None:
         assert args.model == "DiT-XL/2", "Only DiT-XL/2 models are available for auto-download."
-        assert args.image_size in [256, 512]
+        assert args.image_size in [256]
         assert args.num_classes == 1000
 
     # Load model:
     latent_size = args.image_size // 8
-    model = DiT_models[args.model](
-        input_size=latent_size,
-        num_classes=args.num_classes
-    ).to(device)
-    # Auto-download a pre-trained model or load a custom DiT checkpoint from train.py:
-    ckpt_path = args.ckpt or f"DiT-XL-2-{args.image_size}x{args.image_size}.pt"
-    state_dict = find_model(ckpt_path)
-    model.load_state_dict(state_dict)
-    model.eval()  # important!
+    # --- Device Setup ---
+    if jax.devices("gpu"):
+        gpu_device = jax.devices("gpu")[0]
+    else:
+        raise ValueError("GPU not found. This script requires a GPU.")
+
+    # --- Load Models and Configs ---
+    print("Loading models and configurations...")
+    model_config = modelConfig(type='DiT-XL')
+    
+    # Restore the JAX model from the converted checkpoint
+    model, _ = restore_checkpoint(args.checkpoint_path, model_config, trainConfig(), gpu_device)
+    print(f"Model restored from {args.checkpoint_path}")
+
     diffusion = create_diffusion(str(args.num_sampling_steps))
     vae = AutoencoderKL.from_pretrained(f"stabilityai/sd-vae-ft-{args.vae}").to(device)
 
@@ -72,6 +90,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument("--checkpoint_path", type=str, default="/scratch/network/jl0796/DiT-ImageNet/pretrained", help="Path to the directory containing the pretrained pytorch model checkpoint.")
     parser.add_argument("--model", type=str, choices=list(DiT_models.keys()), default="DiT-XL/2")
     parser.add_argument("--vae", type=str, choices=["ema", "mse"], default="mse")
     parser.add_argument("--image-size", type=int, choices=[256, 512], default=256)

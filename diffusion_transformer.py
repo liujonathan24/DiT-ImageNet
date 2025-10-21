@@ -301,6 +301,26 @@ class DiffusionTransformer(nnx.Module):
         x = self.final_layer(x, conditioning)
         x = self.mapper.convert_to_patches(x)
         return x
+    
+    def forward_with_cfg(self, x, t, y, cfg_scale, train=False, rngs=None):
+        """
+        Forward pass of DiT, but also batches the unconditional forward pass for classifier-free guidance.
+        Translated from the original PyTorch implementation.
+        """
+        # https://github.com/openai/glide-text2im/blob/main/notebooks/text2im.ipynb
+        half = x[: len(x) // 2]
+        combined = jnp.concatenate([half, half], axis=0)
+        
+        # Use the model's __call__ method for batched input
+        model_out = self(combined, t, y, train=train, rngs=rngs)
+
+        # The original GLIDE code applies CFG on specific channels.
+        # This may need adaptation for DiT's latent space.
+        eps, rest = model_out[:, :3], model_out[:, 3:]
+        cond_eps, uncond_eps = jnp.split(eps, 2, axis=0)
+        half_eps = uncond_eps + cfg_scale * (cond_eps - uncond_eps)
+        eps = jnp.concatenate([half_eps, half_eps], axis=0)
+        return jnp.concatenate([eps, rest], axis=1)
             
     def get_weights(self):
         return nnx.state(self)

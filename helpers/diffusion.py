@@ -84,11 +84,11 @@ class GaussianDiffusion:
         # Setup for CFG
         x_in = jnp.concatenate([x, x], axis=0)
         t_in = jnp.concatenate([t, t], axis=0)
-        y_null = jnp.array([model.config.num_classes] * B, dtype=jnp.int32)
+        y_null = jnp.array([1001] * B, dtype=jnp.int32) # y_null = jnp.array([model.config.num_classes] * B, dtype=jnp.int32) 
         y_in = jnp.concatenate([y, y_null], axis=0)
 
         # Model call
-        model_output_full = model(x_in, t_in, y_in, train=False)
+        model_output_full = model.forward(x_in, t_in, y_in, train=False) # model_output_full = model(x_in, t_in, y_in, train=False)
 
         # CFG
         cond_output, uncond_output = jnp.split(model_output_full, 2, axis=0)
