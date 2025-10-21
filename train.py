@@ -59,8 +59,8 @@ def main(args):
     trainconfig = trainConfig()
     modelconfig = modelConfig()
     trainconfig.batch_size = 768 
-    trainconfig.log_frequency = 51
-    trainconfig.ckpt_frequency = 50
+    # trainconfig.log_frequency = 51
+    trainconfig.ckpt_frequency = 10
     trainconfig.epochs = 135000
 
     diffusion = create_diffusion(trainconfig.tmax)
@@ -72,6 +72,7 @@ def main(args):
         ema_model_dir = os.path.abspath(os.path.join(experiment_path, "ema_model"))
         # Restore the EMA model from its dedicated directory
         ema_model, extra_params = restore_checkpoint(ema_model_dir, modelconfig, trainconfig, gpu_device)
+        DiTmodel, extra_params = restore_checkpoint(models_dir, modelconfig, trainconfig, gpu_device)
         start_epoch = extra_params['epoch'] + 1
         logging.info("Model and EMA model restored from checkpoint.")
         logging.info(f"Restored epoch: {extra_params['epoch']}")
