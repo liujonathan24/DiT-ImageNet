@@ -16,8 +16,8 @@ import argparse
 
 import jax 
 import argparse
-import torch
-
+import os
+from tqdm import tqdm
 from helpers.config import modelConfig, trainConfig
 from helpers.checkpoint import restore_checkpoint
 from vae.import_sd_vae_torch import get_sd_vae
@@ -28,11 +28,6 @@ def main(args):
     torch.manual_seed(args.seed)
     torch.set_grad_enabled(False)
     device = "cuda" if torch.cuda.is_available() else "cpu"
-
-    # if args.ckpt is None:
-    #     assert args.model == "DiT-XL/2", "Only DiT-XL/2 models are available for auto-download."
-    #     assert args.image_size in [256]
-    #     assert args.num_classes == 1000
 
     # Load model:
     latent_size = args.image_size // 8
@@ -48,7 +43,7 @@ def main(args):
     # model_config = modelConfig(type='DiT-XL')
     
     # Restore the JAX model from the converted checkpoint
-    model, _ = restore_checkpoint(args.checkpoint_path, model_config, trainConfig(), gpu_device)
+    model, params = restore_checkpoint(args.checkpoint_path, model_config, trainConfig(), gpu_device)
     
     print(f"Model restored from {args.checkpoint_path}")
 
@@ -58,30 +53,51 @@ def main(args):
     vae.eval()
 
     # Labels to condition the model with (feel free to change):
-    class_labels = [210, 363, 390, 977, 91, 982, 420, 282]
+    os.makedirs(args.output_dir, exist_ok=True)
+    model_path = os.path.join(args.output_dir, f"fid_{params["epochs"]}")
+    os.makedirs(model_path, exist_ok=True)
+    
+    batch_size = 250
+    # Calculate the number of batches needed to generate the total number of images
+    num_batches = int(np.ceil(args.num_images / batch_size))
+    print(f"Generating {args.num_images} images in {num_batches} batches of {batch_size}...")
 
-    # Create sampling noise:
-    n = len(class_labels)
-    z = torch.randn(n, 4, latent_size, latent_size, device=device)
-    y = torch.tensor(class_labels, device=device)
+    for i in tqdm(range(num_batches)):
+        # Generate a batch of random class labels
+        class_labels = torch.randint(0, args.num_classes, (batch_size,), device=device)
 
-    # Setup classifier-free guidance:
-    z = torch.cat([z, z], 0)
-    y_null = torch.tensor([1000] * n, device=device)
-    y = torch.cat([y, y_null], 0)
-    model_kwargs = dict(y=y, cfg_scale=args.cfg_scale)
+        # Create sampling noise
+        n = len(class_labels)
+        z = torch.randn(n, 4, latent_size, latent_size, device=device)
+        y = class_labels
 
-    # Sample images:
-    print(z.shape)
-    samples = diffusion.p_sample_loop(
-        model.forward_with_cfg, z.shape, z, clip_denoised=False, model_kwargs=model_kwargs, progress=True, device=device
-    )
-    print(samples.shape)
-    samples, _ = samples.chunk(2, dim=0)  # Remove null class samples
-    samples = vae.decode(samples / 0.18215).sample
+        # Setup classifier-free guidance
+        z = torch.cat([z, z], 0)
+        y_null = torch.tensor([1000] * n, device=device)
+        y = torch.cat([y, y_null], 0)
+        model_kwargs = dict(y=y, cfg_scale=args.cfg_scale)
 
-    # Save and display images:
-    save_image(samples, f"sample-v215_samples_{"_".join([str(i) for i in class_labels])}.png", nrow=4, normalize=True, value_range=(-1, 1))
+        # Sample images from the diffusion model
+        samples = diffusion.p_sample_loop(
+            model, z.shape, z, clip_denoised=False, model_kwargs=model_kwargs, progress=True, device=device
+        )
+        samples, _ = samples.chunk(2, dim=0)  # Remove null class samples
+        samples = vae.decode(samples / 0.18215).sample
+
+        # Save each image independently
+        for j in range(samples.size(0)):
+            image_index = i * batch_size + j
+            # Stop if we have generated the required number of images
+            if image_index >= args.num_images:
+                break
+            
+            image = samples[j]
+            label = class_labels[j].item()
+            
+            # Construct filename and save the image
+            filename = f"{image_index:05d}_class_{label}.png"
+            filepath = os.path.join(model_path, filename)
+            save_image(image, filepath, normalize=True, value_range=(-1, 1))
 
 
 if __name__ == "__main__":
@@ -93,8 +109,8 @@ if __name__ == "__main__":
     parser.add_argument("--cfg-scale", type=float, default=4.0)
     parser.add_argument("--num-sampling-steps", type=int, default=250)
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--ckpt", type=str, default=None,
-                        help="Optional path to a DiT checkpoint (default: auto-download a pre-trained DiT-XL/2 model).")
     parser.add_argument("--learn-sigma", action="store_true", default=False, help="Set to true to use a model that learns sigma.")
+    parser.add_argument("--num_images", default=10000, help="Number of images to generate")
+    parser.add_argument("--output_dir", "-o", default="/scratch/network/jl0796/DiT-ImageNet/results/experiment-v215/outputs")
     args = parser.parse_args()
     main(args)
