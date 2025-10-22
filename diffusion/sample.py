@@ -44,10 +44,12 @@ def main(args):
 
     # --- Load Models and Configs ---
     print("Loading models and configurations...")
-    model_config = modelConfig(type='DiT-XL')
+    model_config = modelConfig()
+    # model_config = modelConfig(type='DiT-XL')
     
     # Restore the JAX model from the converted checkpoint
     model, _ = restore_checkpoint(args.checkpoint_path, model_config, trainConfig(), gpu_device)
+    
     print(f"Model restored from {args.checkpoint_path}")
 
     diffusion = create_diffusion(str(args.num_sampling_steps), learn_sigma=args.learn_sigma)
@@ -79,12 +81,12 @@ def main(args):
     samples = vae.decode(samples / 0.18215).sample
 
     # Save and display images:
-    save_image(samples, "sample.png", nrow=4, normalize=True, value_range=(-1, 1))
+    save_image(samples, "sample-v215.png", nrow=4, normalize=True, value_range=(-1, 1))
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--checkpoint_path", type=str, default="/scratch/network/jl0796/DiT-ImageNet/pretrained", help="Path to the directory containing the pretrained pytorch model checkpoint.")
+    parser.add_argument("--checkpoint_path", type=str, default="/scratch/network/jl0796/DiT-ImageNet/results/experiment-v215/models", help="Path to the directory containing the pretrained pytorch model checkpoint.")
     # parser.add_argument("--vae", type=str, choices=["ema", "mse"], default="mse")
     parser.add_argument("--image-size", type=int, choices=[256, 512], default=256)
     parser.add_argument("--num-classes", type=int, default=1000)
