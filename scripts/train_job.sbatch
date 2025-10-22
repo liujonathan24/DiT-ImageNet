@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --nodes=1                # Request one node
 #SBATCH --ntasks=1               # Request one task (core)
-#SBATCH --mem=40G                # Request 40GB of memory
+#SBATCH --mem=20G                # Request 40GB of memory
 #SBATCH --time=48:00:00            # Set a 48-hour time limit
 #SBATCH --gres=gpu:1             # Request one GPU
 #SBATCH --constraint=gpu80         # Request a node with an 80GB GPU
