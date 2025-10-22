@@ -125,12 +125,15 @@ class _WrappedModel:
     def __call__(self, x, ts, **kwargs):
         map_tensor = th.tensor(self.timestep_map, device=ts.device, dtype=ts.dtype)
         new_ts = map_tensor[ts]
-        # if self.rescale_timesteps:
-        #     new_ts = new_ts.float() * (1000.0 / self.original_num_steps)
-        
+
         # Convert PyTorch tensors to JAX arrays
         x_jax = jnp.array(x.detach().cpu().numpy())
         new_ts_jax = jnp.array(new_ts.detach().cpu().numpy())
+
+        # Also convert the 'y' tensor in kwargs from PyTorch to JAX
+        if 'y' in kwargs:
+            y_torch = kwargs['y']
+            kwargs['y'] = jnp.array(y_torch.detach().cpu().numpy())
 
         # Call the JAX model, passing train=False for inference
         jax_output = self.model(x_jax, new_ts_jax, train=False, **kwargs)
