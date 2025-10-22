@@ -26,7 +26,7 @@ source activate /scratch/network/jl0796/dit-env
 
 # 4. Run your Python training script
 echo "Running Python script..."
-python new_train.py -re /scratch/network/jl0796/DiT-ImageNet/results/experiment-v201/
+python train.py -re /scratch/network/jl0796/DiT-ImageNet/results/experiment-v215/
 
 echo "----------------------------------------"
 echo "Job finished with exit code $?"
