@@ -5,6 +5,7 @@
 
 import numpy as np
 import torch as th
+import jax.numpy as jnp
 
 from .gaussian_diffusion import GaussianDiffusion
 
@@ -126,4 +127,13 @@ class _WrappedModel:
         new_ts = map_tensor[ts]
         # if self.rescale_timesteps:
         #     new_ts = new_ts.float() * (1000.0 / self.original_num_steps)
-        return self.model(x, new_ts, **kwargs)
+        
+        # Convert PyTorch tensors to JAX arrays
+        x_jax = jnp.array(x.detach().cpu().numpy())
+        new_ts_jax = jnp.array(new_ts.detach().cpu().numpy())
+
+        # Call the JAX model, passing train=False for inference
+        jax_output = self.model(x_jax, new_ts_jax, train=False, **kwargs)
+
+        # Convert the JAX output back to a PyTorch tensor on the correct device
+        return th.tensor(np.array(jax_output), device=ts.device)
