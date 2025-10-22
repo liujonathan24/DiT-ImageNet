@@ -50,7 +50,7 @@ def main(args):
     model, _ = restore_checkpoint(args.checkpoint_path, model_config, trainConfig(), gpu_device)
     print(f"Model restored from {args.checkpoint_path}")
 
-    diffusion = create_diffusion(str(args.num_sampling_steps))
+    diffusion = create_diffusion(str(args.num_sampling_steps), learn_sigma=args.learn_sigma)
     vae = get_sd_vae()
     vae.to('cuda')
     vae.eval()
@@ -93,6 +93,6 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--ckpt", type=str, default=None,
                         help="Optional path to a DiT checkpoint (default: auto-download a pre-trained DiT-XL/2 model).")
-    parser.add_argument("--learn-sigma", action="store_true", help="Set to true to use a model that learns sigma.")
+    parser.add_argument("--learn-sigma", action="store_true", default=False, help="Set to true to use a model that learns sigma.")
     args = parser.parse_args()
     main(args)
