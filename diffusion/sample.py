@@ -12,7 +12,6 @@ torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 from torchvision.utils import save_image
 from diffusion import create_diffusion
-from diffusers.models import AutoencoderKL
 import argparse
 
 import jax 
@@ -73,7 +72,7 @@ def main(args):
     # Sample images:
     print(z.shape)
     samples = diffusion.p_sample_loop(
-        model.forward_with_cfg, z.shape, z, clip_denoised=False, model_kwargs=model_kwargs, progress=True, device=device
+        model.forward, z.shape, z, clip_denoised=False, model_kwargs=model_kwargs, progress=True, device=device
     )
     print(samples.shape)
     samples, _ = samples.chunk(2, dim=0)  # Remove null class samples
