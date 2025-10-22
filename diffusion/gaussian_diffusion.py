@@ -5,7 +5,7 @@
 
 
 import math
-
+import jax.numpy as jnp
 import numpy as np
 import torch as th
 import enum
@@ -276,7 +276,10 @@ class GaussianDiffusion:
 
         B, C = x.shape[:2]
         assert t.shape == (B,)
-        model_output = model(x, t, **model_kwargs)
+        x_jax = jnp.array(x.detach().cpu().numpy())
+        t_jax = jnp.array(t.detach().cpu().numpy())
+        model_output = model(x_jax, t_jax, **model_kwargs)
+        model_output = th.tensor(np.array(model_output), device='cuda:0')
         if isinstance(model_output, tuple):
             model_output, extra = model_output
         else:

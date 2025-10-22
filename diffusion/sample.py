@@ -21,7 +21,6 @@ import torch
 
 from helpers.config import modelConfig, trainConfig
 from helpers.checkpoint import restore_checkpoint
-from helpers.create_diffusion import create_diffusion
 from vae.import_sd_vae_torch import get_sd_vae
 
 
