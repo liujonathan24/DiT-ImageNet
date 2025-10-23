@@ -13,7 +13,7 @@ torch.backends.cudnn.allow_tf32 = True
 from torchvision.utils import save_image
 from diffusion import create_diffusion
 import argparse
-
+import numpy as np
 import jax 
 import argparse
 import os
@@ -54,10 +54,10 @@ def main(args):
 
     # Labels to condition the model with (feel free to change):
     os.makedirs(args.output_dir, exist_ok=True)
-    model_path = os.path.join(args.output_dir, f"fid_{params["epochs"]}")
+    model_path = os.path.join(args.output_dir, f"fid_{params["epoch"]}")
     os.makedirs(model_path, exist_ok=True)
     
-    batch_size = 250
+    batch_size = 50
     # Calculate the number of batches needed to generate the total number of images
     num_batches = int(np.ceil(args.num_images / batch_size))
     print(f"Generating {args.num_images} images in {num_batches} batches of {batch_size}...")
@@ -79,7 +79,7 @@ def main(args):
 
         # Sample images from the diffusion model
         samples = diffusion.p_sample_loop(
-            model, z.shape, z, clip_denoised=False, model_kwargs=model_kwargs, progress=True, device=device
+            model.forward_with_cfg, z.shape, z, clip_denoised=False, model_kwargs=model_kwargs, progress=True, device=device
         )
         samples, _ = samples.chunk(2, dim=0)  # Remove null class samples
         samples = vae.decode(samples / 0.18215).sample
@@ -105,12 +105,12 @@ if __name__ == "__main__":
     parser.add_argument("--checkpoint_path", type=str, default="/scratch/network/jl0796/DiT-ImageNet/results/experiment-v215/ema_model", help="Path to the directory containing the pretrained pytorch model checkpoint.")
     # parser.add_argument("--vae", type=str, choices=["ema", "mse"], default="mse")
     parser.add_argument("--image-size", type=int, choices=[256, 512], default=256)
-    parser.add_argument("--num-classes", type=int, default=1000)
+    parser.add_argument("--num-classes", type=int, default=100)
     parser.add_argument("--cfg-scale", type=float, default=4.0)
     parser.add_argument("--num-sampling-steps", type=int, default=250)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--learn-sigma", action="store_true", default=False, help="Set to true to use a model that learns sigma.")
-    parser.add_argument("--num_images", default=10000, help="Number of images to generate")
+    parser.add_argument("--num_images", "-n", default=10000, type=int, help="Number of images to generate")
     parser.add_argument("--output_dir", "-o", default="/scratch/network/jl0796/DiT-ImageNet/results/experiment-v215/outputs")
     args = parser.parse_args()
     main(args)
