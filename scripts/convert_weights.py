@@ -30,7 +30,7 @@ def convert_weights(pytorch_weights_path, jax_model):
     weight_mapping = {
         # Class Embedder
         "y_embedder.embedder.embedding..value": ("y_embedder.embedding_table.weight", False),
-        #"y_embedder.embedder.embedding.value": ("y_embedder.weight", False),
+
         # Patch Embedder
         "mapper.patch_embeddings.kernel..value": ("x_embedder.proj.weight", True),
         "mapper.patch_embeddings.bias..value": ("x_embedder.proj.bias", False),

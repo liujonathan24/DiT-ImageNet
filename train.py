@@ -59,7 +59,6 @@ def main(args):
     trainconfig = trainConfig()
     modelconfig = modelConfig()
     trainconfig.batch_size = 768 
-    # trainconfig.log_frequency = 51
     trainconfig.ckpt_frequency = 10
     trainconfig.epochs = 135000
 

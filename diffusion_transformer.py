@@ -3,7 +3,6 @@ import jax.numpy as jnp
 from jax import vmap
 from flax import nnx
 from helpers.config import modelConfig
-# TODO: check config calculates things correctly.
 
 xavier_init = nnx.initializers.xavier_uniform()
 
@@ -17,7 +16,6 @@ def print_stats_jax(tensor, name="Tensor"):
         f"min={min_val:.4f}, max={max_val:.4f}, shape={tensor.shape}, dtype={tensor.dtype}"
     )
 
-# TODO: check
 class MHA(nnx.Module):
     def __init__(self, config: modelConfig, rng: jax.random.PRNGKey):
         
@@ -55,7 +53,6 @@ class MHA(nnx.Module):
         out = jnp.einsum('hlm,hmd->hld', attn, v)
         return out, attn
 
-# Done
 class MLP(nnx.Module):
     def __init__(self, config: modelConfig, rng: jax.random.PRNGKey):
         fc1_rng, fc2_rng = jax.random.split(rng)
@@ -73,7 +70,6 @@ class MLP(nnx.Module):
         x = self.fc2(x)
         return x
 
-# Done
 class TimeMLP(nnx.Module):
     # TODO: init as
     # nn.init.normal_(self.t_embedder.mlp[0].weight, std=0.02)
@@ -145,11 +141,10 @@ class DiTBlock(nnx.Module):
         tmp = gamma2 * tmp
         x = x + tmp
         return x
-# Checked
+
 class DiTFinalLayer(nnx.Module):
     def __init__(self, config: modelConfig, rng: jax.random.PRNGKey):
         self.dtype = config.dtype
-        # multiplier = 2 if config.learn_sigma else 1
         ln_rng, linear_rng, lin_weights_rng = jax.random.split(rng, 3)
         self.LayerNorm = nnx.LayerNorm(config.DiT_hidden_size, epsilon=1e-6, rngs=nnx.Rngs(ln_rng), use_scale=False, use_bias=False, dtype=self.dtype)
         self.linear = nnx.Linear(config.DiT_hidden_size, config.patch_size**2 * config.output_channels, kernel_init=zero_init, rngs=nnx.Rngs(linear_rng), dtype=self.dtype)
@@ -204,7 +199,6 @@ class DiTPatch(nnx.Module):
 
 class DiffusionTransformer(nnx.Module):
     """Diffusion Transformer"""
-    # Done
     def __init__(self, config: modelConfig):
         self.config = config
         self.length = config.token_length 
@@ -256,12 +250,10 @@ class DiffusionTransformer(nnx.Module):
         # use half of dimensions to encode grid_h
         emb_h = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, jnp.arange(grid_size, dtype=jnp.float32))
         emb_w = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, jnp.arange(grid_size, dtype=jnp.float32))
-
-        # emb = jnp.concatenate([emb_h, emb_w], axis=1) # This is for 1D grid, not 2D
         
         grid_h = jnp.arange(grid_size, dtype=jnp.float32)
         grid_w = jnp.arange(grid_size, dtype=jnp.float32)
-        grid = jnp.meshgrid(grid_w, grid_h)  # here w goes first
+        grid = jnp.meshgrid(grid_w, grid_h)
         grid = jnp.stack(grid, axis=0)
         grid = grid.reshape([2, 1, grid_size, grid_size])
 
@@ -272,9 +264,9 @@ class DiffusionTransformer(nnx.Module):
 
         return pos_embed.astype(self.dtype)
 
-    # Done
+
     def time_embed(self, t, max_period=10000):
-        dim = self.config.time_embed_dim # TODO: check that this is 256
+        dim = self.config.time_embed_dim
         half = dim // 2
         freqs = jnp.exp(
             -jnp.log(max_period) * jnp.arange(start=0, stop=half, dtype=jnp.float32) / half
@@ -305,17 +297,12 @@ class DiffusionTransformer(nnx.Module):
     def forward_with_cfg(self, x, t, y, cfg_scale, train=False, rngs=None):
         """
         Forward pass of DiT, but also batches the unconditional forward pass for classifier-free guidance.
-        Translated from the original PyTorch implementation.
         """
-        # https://github.com/openai/glide-text2im/blob/main/notebooks/text2im.ipynb
         half = x[: len(x) // 2]
         combined = jnp.concatenate([half, half], axis=0)
         
-        # Use the model's __call__ method for batched input
         model_out = self(combined, t, y, train=train, rngs=rngs)
 
-        # The original GLIDE code applies CFG on specific channels.
-        # This may need adaptation for DiT's latent space.
         eps, rest = model_out[:, :3], model_out[:, 3:]
         cond_eps, uncond_eps = jnp.split(eps, 2, axis=0)
         half_eps = uncond_eps + cfg_scale * (cond_eps - uncond_eps)

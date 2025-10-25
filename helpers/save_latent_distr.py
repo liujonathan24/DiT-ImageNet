@@ -52,17 +52,16 @@ def main():
         dataloader = train_dataloader if source == "train" else valid_loader
         for i, (batch_orig, labels) in enumerate(tqdm(dataloader)):
 
-            # Save the corresponding label for each mean/std batch.
+            # Save the corresponding labels for batch.
             all_labels.append(labels.cpu().numpy())
 
             batch = batch_orig.clone().permute(0, 3, 1, 2).to(device)
 
-            # Encode using sd_vae:
             with torch.no_grad():
                 latent_dist = sd_vae.encode(batch).latent_dist
                 mean = 0.18215 * latent_dist.mean
                 std = latent_dist.std  
-                # Stack mean and std into a single tensor of shape (B, 2, C, H, W)
+                # Stack mean and std into shape (B, 2, C, H, W)
                 info = torch.stack((mean, std), dim=1)
                 
             latent_info.append(info.cpu().numpy())
@@ -141,12 +140,11 @@ def create_latent_dataloader(source, batch_size, shuffle=True, num_workers=2):
     latent_distr = jnp.array(np.load(distr_path))
     labels = jnp.array(np.load(labels_path))
 
-    # Split the distribution data into mean and std
+    # retrieve the mean and std from the distribution data
     mean_data = latent_distr[:, 0, ...]
     std_data = latent_distr[:, 1, ...]
 
     # Create a JAX ArrayDataset
-    # The dataloader will yield batches in the order of the arrays provided.
     dataset = ArrayDataset(labels, mean_data, std_data)
 
     # Create and return the DataLoader

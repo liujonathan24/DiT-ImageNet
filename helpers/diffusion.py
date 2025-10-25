@@ -3,9 +3,6 @@ import jax.numpy as jnp
 import jax
 
 
-# This file is a JAX/NumPy port of the original PyTorch implementation in
-# https://github.com/openai/guided-diffusion/blob/main/guided_diffusion/gaussian_diffusion.py
-
 def _extract_into_tensor(arr, timesteps, broadcast_shape):
     """
     Extract values from a 1-D numpy array for a batch of indices.
