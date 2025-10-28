@@ -54,7 +54,6 @@ class modelConfig:
         # Return a serializable dict representation, excluding non-serializable fields
         return {
             "model_type": self.model_type,
-            #"rngs": None,
             "input_size": self.input_size,
             "image_channels": self.image_channels,
             "patch_size": self.patch_size,

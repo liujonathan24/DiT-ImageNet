@@ -123,9 +123,10 @@ class _WrappedModel:
         self.original_num_steps = original_num_steps
 
     def __call__(self, x, ts, **kwargs):
-        map_tensor = th.tensor(self.timestep_map, device=ts.device, dtype=ts.dtype)
+        # Ensure the dtype is a torch.dtype, not a numpy.dtype
+        map_tensor = th.tensor(self.timestep_map, device=ts.device, dtype=torch.int32)
         new_ts = map_tensor[ts]
-
+        
         # Convert PyTorch tensors to JAX arrays
         x_jax = jnp.array(x.detach().cpu().numpy())
         new_ts_jax = jnp.array(new_ts.detach().cpu().numpy())

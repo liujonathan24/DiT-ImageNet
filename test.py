@@ -4,122 +4,83 @@ import jax.numpy as jnp
 from helpers.config import modelConfig, trainConfig
 import argparse
 import os
-from helpers.diffusion import Diffusion
+from diffusion import create_diffusion # Use PyTorch diffusion
 from vae.import_sd_vae_torch import get_sd_vae
 from PIL import Image
 import numpy as np
 import torch
 from helpers.checkpoint import restore_checkpoint
+from torchvision.utils import save_image # For saving images
 
 def main(args):
+    # Setup PyTorch:
+    torch.manual_seed(args.seed)
+    torch.set_grad_enabled(False)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    # Load model:
+    latent_size = args.image_size // 8
+    # --- Device Setup ---
     if jax.devices("gpu"):
         gpu_device = jax.devices("gpu")[0]
     else:
-        gpu_device = jax.devices("cpu")[0]
-    assert gpu_device != None
+        raise ValueError("GPU not found. This script requires a GPU.")
 
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    sd_vae = get_sd_vae()
-    sd_vae.eval()
-    sd_vae.to(device)
-
+    # --- Load Models and Configs ---
+    print("Loading models and configurations...")
+    model_config = modelConfig(type='DiT-XL')
     
+    # Restore the JAX model from the converted checkpoint
+    model, _ = restore_checkpoint(args.checkpoint_path, model_config, trainConfig(), gpu_device)
+    
+    print(f"Model restored from {args.checkpoint_path}")
 
-    modelconfig = modelConfig(type='DiT-XL')
-    trainconfig = trainConfig()
-    model = DiffusionTransformer(modelconfig)
+    diffusion = create_diffusion(str(args.num_sampling_steps), learn_sigma=args.learn_sigma)
+    vae = get_sd_vae()
+    vae.to('cuda')
+    vae.eval()
 
-    model, extra_params = restore_checkpoint(args.checkpoint_path, modelconfig, trainconfig, gpu_device)
+    # Labels to condition the model with (feel free to change):
+    class_labels = [int(label) for label in args.class_labels.split(',')]
 
-    print("Model restored from checkpoint")
-    print(f"Restored epoch: {extra_params['epoch']}")
+    # Create sampling noise:
+    n = len(class_labels)
+    z = torch.randn(n, 4, latent_size, latent_size, device=device)
+    y = torch.tensor(class_labels, device=device)
 
-    config = modelConfig()
-    trainconfig = trainConfig()
-    trainconfig.batch_size = 1 # 12
-    diffusion = Diffusion(trainconfig.linear_variance_min, trainconfig.linear_variance_max, trainconfig.tmax)
+    # Setup classifier-free guidance:
+    z = torch.cat([z, z], 0)
+    y_null = torch.tensor([1000] * n, device=device)
+    y = torch.cat([y, y_null], 0)
+    model_kwargs = dict(y=y, cfg_scale=args.cfg_scale)
 
+    # Sample images:
+    print(z.shape)
+    samples = diffusion.p_sample_loop(
+        model, z.shape, z, clip_denoised=False, model_kwargs=model_kwargs, progress=True, device=device
+    )
+    print(samples.shape)
+    samples, _ = samples.chunk(2, dim=0)  # Remove null class samples
+    samples = vae.decode(samples / 0.18215).sample
+
+    # Save and display images:
     os.makedirs(args.output_dir, exist_ok=True)
-    rngs = jax.random.PRNGKey(42)
-    # Sample 1000 images for FID.
-    for i in range(int(jnp.ceil(1000/trainconfig.batch_size))):
-        # Diffusion process. Starts with [b, c, h, w] = [b, 4, 32, 32] ~ N(0, 1)
-        x_t = jax.random.normal(rngs, shape=(trainconfig.batch_size, config.image_channels, config.input_size, config.input_size))
-       
-        for t in range(1000, 0, -1): # range(1000, 0, -1):
-            
-            # t = jnp.ones((trainconfig.batch_size)) * t
-            # print(x_t.shape, t.shape)
-            t_vec = jnp.ones((trainconfig.batch_size)) * t
-            prediction = model(x_t, t_vec, t_vec*0, train=False)
-            modified_x_t = x_t - prediction * (1-diffusion.alphas[t-1])/jnp.sqrt(1-diffusion.alpha_bars[t-1])
-
-            modified_x_t *= 1/jnp.sqrt(diffusion.alphas[t-1])
-            if t >1:
-                z_t = jax.random.normal(rngs, shape=(trainconfig.batch_size, config.image_channels, config.input_size, config.input_size))
-            else:
-                z_t = jnp.zeros((trainconfig.batch_size, config.image_channels, config.input_size, config.input_size))
-            
-            noise_t = jnp.sqrt(diffusion.variances[t-1]) * z_t
-
-            x_t = modified_x_t + noise_t
-            # x_t = jnp.clip(x_t, min=-1, max=1)
-
-            if t%200 == 0:
-                restored = sd_vae.decode(torch.tensor(np.array(x_t)).to(device)/0.18215).sample.detach().cpu().numpy()
-                im_arr = np.transpose(restored, (0, 2, 3, 1))
-                print(im_arr.shape)
-                im_arr = im_arr[0,:,:,:]
-                im_arr = np.squeeze(im_arr)
-                print(im_arr.shape)
-        
-                # VAE output is ~[-1, 1], convert to [0, 255] for saving
-                im_arr = np.clip(im_arr, -1.0, 1.0)
-                im_arr = (im_arr + 1) / 2.0
-                im_arr = (im_arr * 255).astype(np.uint8)
-                path = os.path.abspath(os.path.join(args.output_dir, "tmp_restored.png"))
-                Image.fromarray(im_arr).save(path) #os.path.join(experiment_path, "tmp_restored.png"))
-        # Decode:
-        x_t /= 0.18215
-        print(f"Final shape is {x_t.shape}") # (12, 4, 32, 32)
-        print(f"Latent stats before decoding (mean, min, max, var):")
-        print(jnp.mean(x_t), jnp.min(x_t), jnp.max(x_t), jnp.var(x_t))
-        
-        with torch.no_grad():
-            img = sd_vae.decode(torch.tensor(np.array(x_t)).to(device)).sample
-        img = img.cpu().numpy()
-
-        print(f"Decoded image shape: {img.shape}")
-        print(f"Image stats after decoding (mean, min, max, var):")
-        print(jnp.mean(img), jnp.min(img), jnp.max(img), jnp.var(img))
-
-        for j in range(img.shape[0]):
-            # take one image (3, H, W)
-            im_arr = img[j, :, :, :]
-
-            # rearrange to (H, W, C)
-            im_arr = np.transpose(im_arr, (1, 2, 0))
-            
-            # VAE output is ~[-1, 1], convert to [0, 255] for saving
-            im_arr = np.clip(im_arr, -1.0, 1.0)
-            im_arr = (im_arr + 1) / 2.0
-            im_arr = (im_arr * 255).astype(np.uint8)
-
-            # save
-            im = Image.fromarray(im_arr)
-            im.save(os.path.join(args.output_dir, f"sample_{i * trainconfig.batch_size + j}.jpeg"))
-
-            
-        break
-
-
-
-
+    for i in range(n):
+        output_filename = os.path.join(args.output_dir, f"sample_class_{class_labels[i]}.png")
+        save_image(samples[i], output_filename, normalize=True, value_range=(-1, 1))
+        print(f"Image saved to {output_filename}")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--checkpoint_path", "-c", help="Path to the checkpoint directory to restore from.")
-    parser.add_argument("--output_dir", "-o", help="Path to the directory to save images to.")
+    parser.add_argument("--checkpoint_path", type=str, default="/scratch/network/jl0796/DiT-ImageNet/results/experiment-v215/ema_model", help="Path to the directory containing the pretrained pytorch model checkpoint.")
+    parser.add_argument("--output_dir", type=str, default="./outputs", help="Path to the directory to save generated images.")
+    parser.add_argument("--image-size", type=int, choices=[256, 512], default=256)
+    parser.add_argument("--num-classes", type=int, default=1000)
+    parser.add_argument("--cfg-scale", type=float, default=4.0)
+    parser.add_argument("--num-sampling-steps", type=int, default=250)
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--learn-sigma", action="store_true", default=False, help="Set to true to use a model that learns sigma.")
+    parser.add_argument("--class_labels", type=str, default="207,360,387,974,88,979,417,279", help="Comma-separated list of ImageNet class labels to generate.")
     args = parser.parse_args()
     main(args)
