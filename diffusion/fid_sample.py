@@ -51,14 +51,12 @@ def main(args):
     vae = get_sd_vae()
     vae.to('cuda')
     vae.eval()
-
-    # Labels to condition the model with (feel free to change):
+ 
     os.makedirs(args.output_dir, exist_ok=True)
     model_path = os.path.join(args.output_dir, f"fid_{params["epoch"]}")
     os.makedirs(model_path, exist_ok=True)
     
-    batch_size = 50
-    # Calculate the number of batches needed to generate the total number of images
+    batch_size = 50 
     num_batches = int(np.ceil(args.num_images / batch_size))
     print(f"Generating {args.num_images} images in {num_batches} batches of {batch_size}...")
 

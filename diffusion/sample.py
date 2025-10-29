@@ -56,8 +56,7 @@ def main(args):
     vae = get_sd_vae()
     vae.to('cuda')
     vae.eval()
-
-    # Labels to condition the model with (feel free to change):
+ 
     class_labels = [210, 363, 390, 977, 91, 982, 420, 282]
 
     # Create sampling noise:

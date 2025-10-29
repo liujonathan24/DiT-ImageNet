@@ -66,15 +66,15 @@ def main(args):
     y_jax = jnp.array(y.detach().cpu().numpy())
 
     # Setup classifier-free guidance (using JAX arrays):
-    # z_in = jnp.concatenate([z_jax, z_jax], axis=0)
-    # y_null_jax = jnp.array([1000] * n, dtype=jnp.int32)
-    # y_in = jnp.concatenate([y_jax, y_null_jax], axis=0)
-    model_kwargs = dict(y=y_jax, cfg_scale=args.cfg_scale)
+    z_in = jnp.concatenate([z_jax, z_jax], axis=0)
+    y_null_jax = jnp.array([1000] * n, dtype=jnp.int32)
+    y_in = jnp.concatenate([y_jax, y_null_jax], axis=0)
+    model_kwargs = dict(y=y_in, cfg_scale=args.cfg_scale)
 
     # Sample images:
-    print(z.shape)
+    print(z_in.shape)
     samples_jax = diffusion.p_sample_loop(
-        model, z_jax.shape, z_jax, clip_denoised=False, model_kwargs=model_kwargs, progress=True 
+        model, z_in.shape, z_in, clip_denoised=False, model_kwargs=model_kwargs, progress=True 
     )
     print(samples_jax.shape)
     
