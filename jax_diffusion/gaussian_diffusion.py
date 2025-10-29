@@ -244,7 +244,8 @@ class GaussianDiffusion:
         }
 
     def p_sample(self, model, x, t, y, cfg_scale, rng):
-        out = self.p_mean_variance(model, x, t, y, cfg_scale)
+        model_kwargs = {'y': y, 'cfg_scale': cfg_scale}
+        out = self.p_mean_variance(model, x, t, model_kwargs=model_kwargs)
         noise = jax.random.normal(rng, x.shape, dtype=x.dtype)
         nonzero_mask = (t != 0).astype(x.dtype).reshape(x.shape[0], *([1] * (len(x.shape) - 1)))
         sample = out["mean"] + nonzero_mask * jnp.exp(0.5 * out["log_variance"]) * noise
