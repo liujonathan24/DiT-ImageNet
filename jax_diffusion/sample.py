@@ -72,7 +72,7 @@ def main(args):
     # Sample images:
     print(z_in.shape)
     samples_jax = diffusion.p_sample_loop(
-        model, z_in.shape, z_in, clip_denoised=False, model_kwargs=model_kwargs, progress=True 
+        model.forward_with_cfg, z_in.shape, z_in, clip_denoised=False, model_kwargs=model_kwargs, progress=True 
     )
     print(samples_jax.shape)
     
