@@ -1,7 +1,7 @@
 import numpy as np
 import jax.numpy as jnp
 
-from .gaussian_diffusion import GaussianDiffusion
+from jax_diffusion.gaussian_diffusion import GaussianDiffusion
 
 def space_timesteps(num_timesteps, section_counts):
     """
@@ -69,17 +69,6 @@ class SpacedDiffusion(GaussianDiffusion):
     ):
         return super().p_mean_variance(self._wrap_model(model), *args, **kwargs)
 
-    def training_losses(
-        self, model, *args, **kwargs
-    ):
-        return super().training_losses(self._wrap_model(model), *args, **kwargs)
-
-    def condition_mean(self, cond_fn, *args, **kwargs):
-        return super().condition_mean(self._wrap_model(cond_fn), *args, **kwargs)
-
-    def condition_score(self, cond_fn, *args, **kwargs):
-        return super().condition_score(self._wrap_model(cond_fn), *args, **kwargs)
-
     def _wrap_model(self, model):
         if isinstance(model, _WrappedModel):
             return model
@@ -103,7 +92,7 @@ class _WrappedModel:
         new_ts = map_tensor[ts]
         
         # The model is already a JAX model, so no conversion needed here.
-        # The model's __call__ signature is (x, timestep, y, train: bool, *, rngs: dict | None = None)
+        # The model's __call__ signature is (x, timestep, y, train: bool, rngs: dict | None = None)
         # We need to extract y and cfg_scale from model_kwargs.
         y = kwargs.get('y')
         cfg_scale = kwargs.get('cfg_scale')

@@ -96,7 +96,6 @@ def betas_for_alpha_bar(num_diffusion_timesteps, alpha_bar, max_beta=0.999):
 class GaussianDiffusion:
     def __init__(
         self,
-        *,
         betas,
         model_mean_type,
         model_var_type,
