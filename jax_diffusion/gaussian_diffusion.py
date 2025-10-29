@@ -182,15 +182,15 @@ class GaussianDiffusion:
         y = model_kwargs.get('y')
         cfg_scale = model_kwargs.get('cfg_scale')
 
-        # Prepare inputs for CFG: duplicate x, t, y
-        x_in = jnp.concatenate([x, x], axis=0)
-        t_in = jnp.concatenate([t, t], axis=0)
-        y_null = jnp.array([model.model.config.num_classes] * B, dtype=jnp.int32)
-        y_in = jnp.concatenate([y, y_null], axis=0)
+        # # Prepare inputs for CFG: duplicate x, t, y
+        # x_in = jnp.concatenate([x, x], axis=0)
+        # t_in = jnp.concatenate([t, t], axis=0)
+        # y_null = jnp.array([model.model.config.num_classes] * B, dtype=jnp.int32)
+        # y_in = jnp.concatenate([y, y_null], axis=0)
 
         # Call the JAX model's forward_with_cfg method
         # This method handles the CFG logic internally and returns the combined output.
-        model_output_full = model.model.forward_with_cfg(x_in, t_in, y_in, cfg_scale, train=False)
+        model_output_full = model.model.forward_with_cfg(x, t, y, cfg_scale, train=False)
 
         if self.model_var_type in [ModelVarType.LEARNED, ModelVarType.LEARNED_RANGE]:
             assert model_output_full.shape == (B * 2, C * 2, *x.shape[2:]) # model_output_full is already combined
