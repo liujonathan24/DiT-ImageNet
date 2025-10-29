@@ -3,9 +3,6 @@ import numpy as np
 
 from .diffusion import GaussianDiffusion
 
-# This file is a JAX/NumPy port of the original PyTorch implementation in
-# https://github.com/openai/DiT/blob/main/diffusion/__init__.py
-
 def get_named_beta_schedule(schedule_name, num_diffusion_timesteps):
     if schedule_name == "linear":
         scale = 1000 / num_diffusion_timesteps
@@ -19,8 +16,6 @@ def get_named_beta_schedule(schedule_name, num_diffusion_timesteps):
 def create_diffusion(steps, noise_schedule="linear", model_mean_type="epsilon", model_var_type="learned_range"):
     betas = get_named_beta_schedule(noise_schedule, steps)
     
-    # For now, we hardcode the mean and var types from the DiT paper
-    # In a real training script, these would be configurable
     if model_mean_type != "epsilon":
         raise ValueError("Only epsilon prediction is supported.")
     if model_var_type != "learned_range":

@@ -6,7 +6,6 @@ from vae.import_sd_vae_torch import get_sd_vae
 from PIL import Image
 import numpy as np
 import torch
-import optax
 from helpers.preprocess_data_torch import load_data
 
 def main():
@@ -37,12 +36,11 @@ def main():
     )
    
 
-    # Hyperparameters for sampling test
+    #  params for sampling test
     N_samples_per_image = 4  # Number of samples to draw from each distribution
     M_images_to_test = 2     # Number of images from the batch to test
     test_restore = False # True
 
-    # Create directory for latent distributions if it doesn't exist
     latent_dir = "data/latent_distribution"
     os.makedirs(latent_dir, exist_ok=True)
 
@@ -106,7 +104,7 @@ def main():
                         path = os.path.abspath(f"tmp_restored_img_{base_img_idx}_sample_{sample_idx}.png")
                         Image.fromarray(im_arr).save(path)
                 
-                print(f"Saved images. Set test_restore=False to process the full dataset.")
+                print(f"Saved images to {path} path")
                 break  # Stop after the first batch when testing 
 
         # Concatenate and save the collected data
