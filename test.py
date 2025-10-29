@@ -28,7 +28,7 @@ def main(args):
 
     # --- Load Models and Configs ---
     print("Loading models and configurations...")
-    model_config = modelConfig(type='DiT-XL')
+    model_config = modelConfig() #type='DiT-XL')
     
     # Restore the JAX model from the converted checkpoint
     model, _ = restore_checkpoint(args.checkpoint_path, model_config, trainConfig(), gpu_device)
@@ -57,7 +57,7 @@ def main(args):
     # Sample images:
     print(z.shape)
     samples = diffusion.p_sample_loop(
-        model, z.shape, z, clip_denoised=False, model_kwargs=model_kwargs, progress=True, device=device
+        model.forward_with_cfg, z.shape, z, clip_denoised=False, model_kwargs=model_kwargs, progress=True, device=device
     )
     print(samples.shape)
     samples, _ = samples.chunk(2, dim=0)  # Remove null class samples

@@ -3,7 +3,7 @@ import jax.numpy as jnp
 import numpy as np
 import enum
 from tqdm.auto import tqdm
-
+import jax
 from .diffusion_utils import _extract_into_tensor
 
 

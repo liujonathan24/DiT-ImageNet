@@ -11,7 +11,7 @@ import torch
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 from torchvision.utils import save_image
-from . import create_diffusion
+from jax_diffusion import create_diffusion
 import argparse
 
 import jax 
@@ -72,7 +72,7 @@ def main(args):
     # Sample images:
     print(z_in.shape)
     samples_jax = diffusion.p_sample_loop(
-        model, z_in.shape, z_in, clip_denoised=False, model_kwargs=model_kwargs, progress=True, device=gpu_device
+        model, z_in.shape, z_in, clip_denoised=False, model_kwargs=model_kwargs, progress=True 
     )
     print(samples_jax.shape)
     
