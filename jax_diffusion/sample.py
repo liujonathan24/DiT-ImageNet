@@ -17,6 +17,8 @@ import argparse
 import jax 
 import jax.numpy as jnp
 import torch
+import numpy as np
+import torch
 
 from helpers.config import modelConfig, trainConfig
 from helpers.checkpoint import restore_checkpoint
@@ -72,7 +74,7 @@ def main(args):
     # Sample images:
     print(z_in.shape)
     samples_jax = diffusion.p_sample_loop(
-        model.forward_with_cfg, z_in.shape, z_in, clip_denoised=False, model_kwargs=model_kwargs, progress=True 
+        model, z_in.shape, z_in, clip_denoised=False, model_kwargs=model_kwargs, progress=True 
     )
     print(samples_jax.shape)
     
@@ -91,7 +93,7 @@ if __name__ == "__main__":
     parser.add_argument("--image-size", type=int, choices=[256, 512], default=256)
     parser.add_argument("--num-classes", type=int, default=1000)
     parser.add_argument("--cfg-scale", type=float, default=4.0)
-    parser.add_argument("--num-sampling-steps", type=int, default=250)
+    parser.add_argument("--num-sampling-steps", "-n", type=int, default=250)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--ckpt", type=str, default=None,
                         help="Optional path to a DiT checkpoint (default: auto-download a pre-trained DiT-XL/2 model).")
