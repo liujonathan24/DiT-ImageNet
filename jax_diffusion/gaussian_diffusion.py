@@ -240,7 +240,7 @@ class GaussianDiffusion:
     
 
     def _predict_xstart_from_eps(self, x_t, t, eps):
-        print(x_t.shape, eps.shape)
+        # print(x_t.shape, eps.shape)
         assert x_t.shape == eps.shape
         return (
             _extract_into_tensor(self.sqrt_recip_alphas_cumprod, t, x_t.shape) * x_t
@@ -280,7 +280,7 @@ class GaussianDiffusion:
             rng, sample_rng = jax.random.split(rng)
             # Extract y and cfg_scale from model_kwargs
             y = model_kwargs.get('y')
-            print(f"y value in p_sample_loop: {y}")
+            # print(f"y value in p_sample_loop: {y}")
             cfg_scale = model_kwargs.get('cfg_scale')
             latents = self.p_sample(model, latents, t, y, cfg_scale, sample_rng)
         

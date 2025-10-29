@@ -84,7 +84,7 @@ def main(args):
     samples_torch = vae.decode(samples_torch / 0.18215).sample
 
     # Save and display images:
-    save_image(samples_torch, f"sample-v215_samples_{"_".join([str(i) for i in class_labels])}.png", nrow=4, normalize=True, value_range=(-1, 1))
+    save_image(samples_torch, f"jax_sample-v215_samples_{"_".join([str(i) for i in class_labels])}.png", nrow=4, normalize=True, value_range=(-1, 1))
 
 
 if __name__ == "__main__":
